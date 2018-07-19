@@ -279,6 +279,10 @@ function GetUTCTime(parameter){
   if (parameter.includes("TZID")){
     var tzid = parameter.split("TZID=")[1].split(":")[0];
     var time = parameter.split(":")[1];
+    
+    if (IsWindowsTimezone(tzid))
+      tzid = WindowsToIANA(tzid);
+    
     return Moment.moment.tz(time,tzid).tz("Etc/UTC").format("YYYYMMDDTHHmmss") + "Z";    
   }
   else
