@@ -21,6 +21,9 @@ var modifyExistingEvents = true; // If you turn this to "false", any event in th
 var removeEventsFromCalendar = true; //If you turn this to "true", any event in the calendar not found in the feed will be removed.
 var addAlerts = true; //Whether to add the ics/ical alerts as notifications on the Google Calendar events
 var descriptionAsTitles = false; //Whether to use the ics/ical descriptions as titles (true) or to use the normal titles as titles (false)
+var wipeDescriptions = true; //Whether to wipe clean the description field
+var wipeTitles = true; //Whether to replace the title with genericTitle 
+var genericTitle = "varattu"; //
 var defaultDuration = 60; //Default duration (in minutes) in case the event is missing an end specification in the ICS/ICAL file
 
 var emailWhenAdded = false; //Will email you when an event is added to your calendar
@@ -130,6 +133,12 @@ function main(){
         currentEvent.title = item.split("DESCRIPTION:")[1];
       else if (item.includes("DESCRIPTION"))
         currentEvent.description = item.split("DESCRIPTION:")[1];
+      
+      if (item.includes("DESCRIPTION") && wipeDescriptions)
+        currentEvent.description = "";
+      
+      if (item.includes("SUMMARY") && wipeTitles)
+        currentEvent.title = genericTitle;   
 
       if (item.includes("DTSTART"))
         currentEvent.startTime = Moment.moment(GetUTCTime(item.split("DTSTART")[1]), "YYYYMMDDTHHmmssZ").toDate();
