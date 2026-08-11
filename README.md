@@ -1,5 +1,7 @@
 # GAS-ICS-Sync
 
+[![Tests](https://github.com/ollisulopuisto/GAS-ICS-Sync/actions/workflows/test.yml/badge.svg)](https://github.com/ollisulopuisto/GAS-ICS-Sync/actions/workflows/test.yml)
+
 > **This is a fork of [derekantrican/GAS-ICS-Sync](https://github.com/derekantrican/GAS-ICS-Sync)** with privacy placeholders, a few extra settings and a set of bug/security fixes on top. See [Fork changes](#fork-changes) below.
 
 ### ⚠️⚠️ This project is looking for contributors and people to help answer questions! Please message @developers on the Discord! ⚠️⚠️
@@ -39,6 +41,14 @@ var sourceCalendars = [
 
 **Sync window** — `syncPastDays` / `syncFutureDays` limit how far back and forward events are synced
 (`null` = no limit). They generate the equivalent `dtend`/`dtstart` entries in `filters.gs`.
+
+**Keeping your own changes to a synced event** — the feed is the source of truth, so editing a synced
+event in Google Calendar (renaming it, moving it, changing its length) only lasts until that event next
+changes in the feed, at which point it is overwritten; deleting it re-creates it on the next run. Events
+are matched by the ICS UID stored in their private extended properties, so renaming or rescheduling them
+does not detach them. To keep an edit permanently, either move/copy the event to a calendar that is not a
+sync target, exclude it by `uid` in `filters.gs` (see the note there), or set `modifyExistingEvents = false`
+to stop all feed updates.
 
 **Fixes on top of upstream** — TLS certificate validation enabled on feed fetches, HTML escaping in the
 summary email, Google Tasks sync no longer deletes tasks it did not create or duplicates them each run,

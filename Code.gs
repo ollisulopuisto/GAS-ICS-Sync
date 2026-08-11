@@ -6,7 +6,8 @@
 * 1) Make a copy:
 *      New Interface: Go to the project overview icon on the left (looks like this: ⓘ), then click the "copy" icon on the top right (looks like two files on top of each other)
 *      Old Interface: Click in the menu "File" > "Make a copy..." and make a copy to your Google Drive
-* 2) Settings: Change lines 24-50 to be the settings that you want to use
+* 2) Settings: Change the settings below (the "SETTINGS" section, down to "DO NOT EDIT BELOW HERE") to be the settings that you want to use
+*      Event filters are configured separately in filters.gs
 * 3) Install:
 *      New Interface: Make sure your toolbar says "install" to the right of "Debug", then click "Run"
 *      Old Interface: Click "Run" > "Run function" > "install"
@@ -75,7 +76,9 @@ var dateFormat = "YYYY-MM-DD"             // date format in the email summary (e
 *            BUGS/FEATURES
 *=========================================
 *
-* Please report any issues at https://github.com/derekantrican/GAS-ICS-Sync/issues
+* This is a fork. Please report issues with the fork's own changes (privacy placeholders,
+* sync window, the fixes listed in its README) at https://github.com/ollisulopuisto/GAS-ICS-Sync/issues
+* and issues with the original script at https://github.com/derekantrican/GAS-ICS-Sync/issues
 *
 *=========================================
 *           $$ DONATIONS $$

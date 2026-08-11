@@ -9,6 +9,15 @@ Define each filter with the following structure and add them to the var filters 
   criterias: ["values"],      // Array of values or patterns for comparison.
   offset: number              // (Optional) For date/time properties, specify an offset in days.
 }
+
+The syncPastDays/syncFutureDays settings in Code.gs generate the equivalent dtend/dtstart
+filters automatically, so a simple sync window does not need an entry here. Generated filters
+are applied before the ones defined below.
+
+To keep manual changes to a single synced event, exclude it by its uid, for instance:
+{parameter: "uid", type: "exclude", comparison: "equals", criterias: ["the-events-uid"]}
+Note that an excluded event is also treated as "no longer in the feed", so its existing copy is
+deleted unless removeEventsFromCalendar is false.
 */
 var filters = [];
 
