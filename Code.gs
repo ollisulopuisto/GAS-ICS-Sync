@@ -109,7 +109,7 @@ var dateFormat = "YYYY-MM-DD"             // date format in the email summary (e
 //!!!!!!!!!!!!!!!! DO NOT EDIT BELOW HERE UNLESS YOU REALLY KNOW WHAT YOU'RE DOING !!!!!!!!!!!!!!!!!!!!
 //=====================================================================================================
 
-var scriptVersion = "26.08.11.1"; // Calendar version of this script, compared against the latest release of updateRepo
+var scriptVersion = "26.08.11.2"; // Calendar version of this script, compared against the latest release of updateRepo
 var updateRepo = "ollisulopuisto/GAS-ICS-Sync"; // The repository this copy is updated from
 
 var defaultMaxRetries = 10; // Maximum number of retries for api functions (with exponential backoff)

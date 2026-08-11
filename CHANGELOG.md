@@ -2,6 +2,20 @@
 
 Versions are calendar versions: `vYY.MM.DD.build`.
 
+## v26.08.11.2
+
+### Fixed
+
+- Feeds behind Cloudflare returning 521 (and the rest of the 520-524 range), 429 or 502 failed the whole
+  run instead of being retried, even though those clear up in seconds.
+
+### Changed
+
+- Removed the "copy the ready-made project" install option, which needed a shared Apps Script copy kept up
+  to date by hand. Install from a clone with clasp, or paste the files in the browser.
+- The README and GitHub issue config no longer carry upstream's contributor call, Discord-first support
+  section and funding links.
+
 ## v26.08.11.1
 
 First release of this fork. It is based on the current upstream
