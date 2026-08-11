@@ -32,7 +32,16 @@ Then deploy the settings page: **Deploy** → **New deployment** → gear icon �
 Execute as **Me**, access **Only myself** → **Deploy**, and open the URL it gives you.
 Fill in your calendars there, press **Save**, then **Turn on automatic syncing**.
 
-To update to a newer version later: `git pull && npm run push`.
+To update to a newer version later:
+
+```sh
+git pull && npm run push          # updates the code
+npm run deployments               # lists your deployments, copy the id of the settings page
+npx clasp deploy --deploymentId <id> --description "Settings page"
+```
+
+The last step is only needed when the settings page itself changed: the `/exec` URL serves a fixed
+version, so a redeployment is what makes the new page live on the same URL.
 
 ### Option B: copy the ready-made project
 
