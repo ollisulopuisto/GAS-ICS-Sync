@@ -150,12 +150,13 @@ var removedEvents = [];
 var reportOverallFailure = false;
 
 function startSync(){
-  if (PropertiesService.getUserProperties().getProperty('LastRun') > 0 && (new Date().getTime() - PropertiesService.getUserProperties().getProperty('LastRun')) < 360000) {
+  // The lock is released automatically when the script terminates, even if it crashes,
+  // so a failed run can't block later ones (unlike the old LastRun property guard).
+  var lock = LockService.getUserLock();
+  if (!lock.tryLock(0)) {
     Logger.log("Another iteration is currently running! Exiting...");
     return;
   }
-
-  PropertiesService.getUserProperties().setProperty('LastRun', new Date().getTime());
 
   //Disable email notification if no mail adress is provided
   emailSummary = emailSummary && email != "";
@@ -174,7 +175,8 @@ function startSync(){
     var vevents;
 
     //------------------------ Fetch URL items ------------------------
-    var responses = fetchSourceCalendars(sourceCalendarURLs);
+    var fetchResult = fetchSourceCalendars(sourceCalendarURLs);
+    var responses = fetchResult.items;
     Logger.log("Syncing " + responses.length + " calendars to " + targetCalendarName);
 
     //------------------------ Get target calendar information------------------------
@@ -188,15 +190,31 @@ function startSync(){
         callWithBackoff(function(){
             return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500});
         }, defaultMaxRetries);
+      // If the existing events can't be listed, skip this calendar entirely: adding would
+      // create duplicates and removal would be based on incomplete data
+      if (eventList == null){
+        Logger.log("[ERROR] Could not list existing events of " + targetCalendarName + ". Skipping this calendar.");
+        reportOverallFailure = true;
+        continue;
+      }
       calendarEvents = [].concat(calendarEvents, eventList.items);
       //loop until we received all events
+      var eventListFailed = false;
       while(typeof eventList.nextPageToken !== 'undefined'){
         eventList = callWithBackoff(function(){
           return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500, pageToken: eventList.nextPageToken});
         }, defaultMaxRetries);
 
-        if (eventList != null)
-          calendarEvents = [].concat(calendarEvents, eventList.items);
+        if (eventList == null){
+          eventListFailed = true;
+          break;
+        }
+        calendarEvents = [].concat(calendarEvents, eventList.items);
+      }
+      if (eventListFailed){
+        Logger.log("[ERROR] Could not list all existing events of " + targetCalendarName + ". Skipping this calendar.");
+        reportOverallFailure = true;
+        continue;
       }
       Logger.log("Fetched " + calendarEvents.length + " existing events from " + targetCalendarName);
       for (var i = 0; i < calendarEvents.length; i++){
@@ -228,14 +246,21 @@ function startSync(){
 
     //------------------------ Remove old events from calendar ------------------------
     if(removeEventsFromCalendar){
-      Logger.log("Checking " + calendarEvents.length + " events for removal");
-      processEventCleanup();
-      Logger.log("Done checking events for removal");
+      // If a source feed couldn't be fetched its events are missing from the parsed data;
+      // removing based on that would delete (and later re-create) all its events
+      if (fetchResult.fetchFailed){
+        Logger.log("[WARNING] Not all sources could be fetched. Skipping event removal for " + targetCalendarName);
+      }
+      else{
+        Logger.log("Checking " + calendarEvents.length + " events for removal");
+        processEventCleanup();
+        Logger.log("Done checking events for removal");
+      }
     }
 
     //------------------------ Process Tasks ------------------------
     if (addTasks){
-      processTasks(responses);
+      processTasks(responses, fetchResult.fetchFailed);
     }
 
     //------------------------ Add Recurring Event Instances ------------------------
@@ -249,7 +274,7 @@ function startSync(){
     sendSummary();
   }
   Logger.log("Sync finished!");
-  PropertiesService.getUserProperties().setProperty('LastRun', 0);
+  lock.releaseLock();
 
   if (reportOverallFailure) {
     // Cause the Google Apps Script "Executions" dashboard to show a failure

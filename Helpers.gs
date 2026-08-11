@@ -37,6 +37,9 @@ function formatDate(date) {
   else if (dateFormat == "MM.DD.YYYY") {
     formattedDate = month + "." + day + "." + year
   }
+  else {
+    formattedDate = year + "-" + month + "-" + day
+  }
 
   if (date.length < 11) {
     return formattedDate
@@ -58,7 +61,7 @@ function formatDate(date) {
  * @return {integer} The closest valid value to the intended frequency setting. Defaulting to 15 if no valid input is provided.
  */
 function getValidTriggerFrequency(origFrequency) {
-  if (!origFrequency > 0) {
+  if (!(origFrequency > 0)) {
     Logger.log("No valid frequency specified. Defaulting to 15 minutes.");
     return 15;
   }
@@ -79,8 +82,22 @@ function getValidTriggerFrequency(origFrequency) {
   return roundedUpValue;
 }
 
-String.prototype.includes = function(phrase){
-  return this.indexOf(phrase) > -1;
+/**
+ * Escapes HTML-significant characters so untrusted feed content can be
+ * embedded in the summary email without markup injection.
+ *
+ * @param {?string} text - The text to escape
+ * @return {?string} The escaped text (null/undefined are passed through)
+ */
+function escapeHtml(text){
+  if (text == null)
+    return text;
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /**
@@ -125,17 +142,18 @@ function deleteAllTriggers(){
  * Gets the ressource from the specified URLs.
  *
  * @param {Array.string} sourceCalendarURLs - Array with URLs to fetch
- * @return {Array.string} The ressources fetched from the specified URLs
+ * @return {Object} {items: fetched [content, colorId] pairs, fetchFailed: true if any source could not be fetched}
  */
 function fetchSourceCalendars(sourceCalendarURLs){
   var result = []
+  var fetchFailed = false;
   for (var source of sourceCalendarURLs){
     var url = source[0].replace("webcal://", "https://");
     var colorId = source[1];
 
     try {
       callWithBackoff(function() {
-        var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
+        var urlResponse = UrlFetchApp.fetch(url, { 'muteHttpExceptions' : true });
         if (urlResponse.getResponseCode() == 200){
           var icsContent = urlResponse.getContentText()
           const icsRegex = RegExp("(BEGIN:VCALENDAR.*?END:VCALENDAR)", "s")
@@ -154,6 +172,7 @@ function fetchSourceCalendars(sourceCalendarURLs){
             if (urlContent == null){
               Logger.log("[ERROR] Incorrect ics/ical URL: " + url)
               reportOverallFailure = true;
+              fetchFailed = true;
               return
             }
             Logger.log("[WARNING] Microsoft is incorrectly formatting ics/ical at: " + url)
@@ -167,11 +186,13 @@ function fetchSourceCalendars(sourceCalendarURLs){
       }, defaultMaxRetries);
     }
     catch (e) {
+      Logger.log("[ERROR] Failed to fetch " + url + ": " + e);
       reportOverallFailure = true;
+      fetchFailed = true;
     }
   }
 
-  return result;
+  return { items: result, fetchFailed: fetchFailed };
 }
 
 /**
@@ -875,8 +896,7 @@ function processEventInstance(recEvent){
   var eventInstanceToPatch = callWithBackoff(function(){
     return Calendar.Events.list(targetCalendarId,
       { singleEvents : true,
-        privateExtendedProperty : "fromGAS=true",
-        privateExtendedProperty : "rec-id=" + recEvent.extendedProperties.private["id"] + "_" + recEvent.recurringEventId
+        privateExtendedProperty : ["fromGAS=true", "rec-id=" + recEvent.extendedProperties.private["id"] + "_" + recEvent.recurringEventId]
       }).items;
   }, defaultMaxRetries);
 
@@ -893,8 +913,7 @@ function processEventInstance(recEvent){
           orderBy : "startTime",
           maxResults: 1,
           timeMin : recEvent.recurringEventId,
-          privateExtendedProperty : "fromGAS=true",
-          privateExtendedProperty : "id=" + recEvent.extendedProperties.private["id"]
+          privateExtendedProperty : ["fromGAS=true", "id=" + recEvent.extendedProperties.private["id"]]
         }).items;
     }, defaultMaxRetries);
   }
@@ -954,62 +973,77 @@ function processEventCleanup(){
 }
 
 /**
- * Processes and adds all vtodo components as Tasks to the user's Google Account
+ * Processes and adds all vtodo components as Tasks to the user's Google Account.
+ * A UID -> task-id map is kept in user properties so the script only ever
+ * removes tasks it created itself (the Tasks API reassigns ids at creation,
+ * so ICS UIDs can't be matched against the task list directly).
  *
- * @param {Array.string} responses - Array with all ical sources
+ * @param {Array.string} responses - Array with all fetched [content, colorId] pairs
+ * @param {boolean} fetchFailed - If true, task removal is skipped as the feed data is incomplete
  */
-function processTasks(responses){
+function processTasks(responses, fetchFailed){
   var taskLists = Tasks.Tasklists.list().items;
   var taskList = taskLists[0];
 
-  var existingTasks = Tasks.Tasks.list(taskList.id).items || [];
-  var existingTasksIds = []
-  Logger.log("Fetched " + existingTasks.length + " existing tasks from " + taskList.title);
-  for (var i = 0; i < existingTasks.length; i++){
-    existingTasksIds[i] = existingTasks[i].id;
+  var props = PropertiesService.getUserProperties();
+  var tasksByUid = {};
+  try{
+    tasksByUid = JSON.parse(props.getProperty("tasksByUid")) || {};
+  }catch(e){
+    tasksByUid = {};
   }
 
-  var icsTasksIds = [];
   var vtasks = [];
-
   for (var resp of responses){
-    var jcalData = ICAL.parse(resp);
+    var jcalData = ICAL.parse(resp[0]);
     var component = new ICAL.Component(jcalData);
 
     vtasks = [].concat(component.getAllSubcomponents("vtodo"), vtasks);
   }
 
-  vtasks.forEach(function(task){ icsTasksIds.push(task.getFirstPropertyValue('uid').toString()); });
+  var icsTasksIds = vtasks.map(function(task){ return task.getFirstPropertyValue('uid').toString(); });
 
   Logger.log("\tProcessing " + vtasks.length + " tasks");
   for (var task of vtasks){
-    var newtask = Tasks.newTask();
-    newtask.id = task.getFirstPropertyValue("uid").toString();
-    newtask.title = task.getFirstPropertyValue("summary").toString();
-    var dueDate = task.getFirstPropertyValue("due").toJSDate();
-    newtask.due = (dueDate.getFullYear()) + "-" + ("0"+(dueDate.getMonth()+1)).slice(-2) + "-" + ("0" + dueDate.getDate()).slice(-2) + "T" + ("0" + dueDate.getHours()).slice(-2) + ":" + ("0" + dueDate.getMinutes()).slice(-2) + ":" + ("0" + dueDate.getSeconds()).slice(-2)+"Z";
+    var uid = task.getFirstPropertyValue("uid").toString();
+    if (tasksByUid[uid] != null)
+      continue; //Task was already created by a previous sync
 
-    Tasks.Tasks.insert(newtask, taskList.id);
+    var newtask = Tasks.newTask();
+    newtask.title = task.getFirstPropertyValue("summary").toString();
+    var due = task.getFirstPropertyValue("due");
+    if (due != null){
+      var dueDate = due.toJSDate();
+      newtask.due = (dueDate.getFullYear()) + "-" + ("0"+(dueDate.getMonth()+1)).slice(-2) + "-" + ("0" + dueDate.getDate()).slice(-2) + "T" + ("0" + dueDate.getHours()).slice(-2) + ":" + ("0" + dueDate.getMinutes()).slice(-2) + ":" + ("0" + dueDate.getSeconds()).slice(-2)+"Z";
+    }
+
+    var insertedTask = Tasks.Tasks.insert(newtask, taskList.id);
+    if (insertedTask != null)
+      tasksByUid[uid] = insertedTask.id;
   }
   Logger.log("\tDone processing tasks");
 
   //-------------- Remove old Tasks -----------
-  // ID can't be used as identifier as the API reassignes a random id at task creation
-  if(removeEventsFromCalendar){
-    Logger.log("Checking " + existingTasksIds.length + " tasks for removal");
-    for (var i = 0; i < existingTasksIds.length; i++){
-      var currentID = existingTasks[i].id;
-      var feedIndex = icsTasksIds.indexOf(currentID);
-
-      if(feedIndex == -1){
-        Logger.log("Deleting old task " + currentID);
-        Tasks.Tasks.remove(taskList.id, currentID);
+  // Only tasks created by this script (tracked in tasksByUid) are ever removed
+  if (removeEventsFromCalendar && !fetchFailed){
+    for (var uid of Object.keys(tasksByUid)){
+      if (icsTasksIds.indexOf(uid) == -1){
+        Logger.log("Deleting old task " + tasksByUid[uid]);
+        try{
+          Tasks.Tasks.remove(taskList.id, tasksByUid[uid]);
+        }
+        catch (e){
+          Logger.log(`Task removal failed with error "${e}"`);
+        }
+        delete tasksByUid[uid];
       }
     }
 
     Logger.log("Done removing tasks");
   }
   //----------------------------------------------------------------
+
+  props.setProperty("tasksByUid", JSON.stringify(tasksByUid));
 }
 
 /**
@@ -1189,7 +1223,7 @@ function parseNotificationTime(notificationString){
   var weekMatch = RegExp("\\d+W", "g").exec(notificationString);
 
   if (weekMatch != null){
-    reminderTime += parseInt(weekMatch[0].slice(0, -1)) & 7 * 24 * 60; //Remove the "W" off the end
+    reminderTime += parseInt(weekMatch[0].slice(0, -1)) * 7 * 24 * 60; //Remove the "W" off the end
 
     return reminderTime; //Return the notification time in minutes
   }
@@ -1221,47 +1255,47 @@ function sendSummary() {
 
   body = "GAS-ICS-Sync made the following changes to your calendar:<br/>";
   for (var tgtCal of addedEvents){
-    body += `<br/>${tgtCal[0]}: ${tgtCal[1].length} added events<br/><ul>`;
+    body += `<br/>${escapeHtml(tgtCal[0])}: ${tgtCal[1].length} added events<br/><ul>`;
     for (var addedEvent of tgtCal[1]){
       body += "<li>"
-        + "Name: " + addedEvent[0][0] + "<br/>"
+        + "Name: " + escapeHtml(addedEvent[0][0]) + "<br/>"
         + "Start: " + formatDate(addedEvent[0][1]) + "<br/>"
         + "End: " + formatDate(addedEvent[0][2]) + "<br/>"
-        + (addedEvent[0][3] ? ("Location: " + addedEvent[0][3] + "<br/>") : "")
-        + (addedEvent[0][4] ? ("Description: " + addedEvent[0][4] + "<br/>") : "")
+        + (addedEvent[0][3] ? ("Location: " + escapeHtml(addedEvent[0][3]) + "<br/>") : "")
+        + (addedEvent[0][4] ? ("Description: " + escapeHtml(addedEvent[0][4]) + "<br/>") : "")
         + "</li>";
     }
     body += "</ul>";
   }
 
   for (var tgtCal of modifiedEvents){
-    body += `<br/>${tgtCal[0]}: ${tgtCal[1].length} modified events<br/><ul>`;
+    body += `<br/>${escapeHtml(tgtCal[0])}: ${tgtCal[1].length} modified events<br/><ul>`;
     for (var modifiedEvent of tgtCal[1]){
       body += "<li>"
-        + (modifiedEvent[0][0] != modifiedEvent[0][1] ? ("<del>Name: " + modifiedEvent[0][0] + "</del><br/>") : "")
-        + "Name: " + modifiedEvent[0][1] + "<br/>"
+        + (modifiedEvent[0][0] != modifiedEvent[0][1] ? ("<del>Name: " + escapeHtml(modifiedEvent[0][0]) + "</del><br/>") : "")
+        + "Name: " + escapeHtml(modifiedEvent[0][1]) + "<br/>"
         + (modifiedEvent[0][2] != modifiedEvent[0][3] ? ("<del>Start: " + formatDate(modifiedEvent[0][2]) + "</del><br/>") : "")
         + " Start: " + formatDate(modifiedEvent[0][3]) + "<br/>"
         + (modifiedEvent[0][4] != modifiedEvent[0][5] ? ("<del>End: " + formatDate(modifiedEvent[0][4]) + "</del><br/>") : "")
         + " End: " + formatDate(modifiedEvent[0][5]) + "<br/>"
-        + (modifiedEvent[0][6] != modifiedEvent[0][7] ? ("<del>Location: " + (modifiedEvent[0][6] ? modifiedEvent[0][6] : "") + "</del><br/>") : "")
-        + (modifiedEvent[0][7] ? (" Location: " + modifiedEvent[0][7] + "<br/>") : "")
-        + (modifiedEvent[0][8] != modifiedEvent[0][9] ? ("<del>Description: " + (modifiedEvent[0][8] ? modifiedEvent[0][8] : "") + "</del><br/>") : "")
-        + (modifiedEvent[0][9] ? (" Description: " + modifiedEvent[0][9] + "<br/>") : "")
+        + (modifiedEvent[0][6] != modifiedEvent[0][7] ? ("<del>Location: " + (modifiedEvent[0][6] ? escapeHtml(modifiedEvent[0][6]) : "") + "</del><br/>") : "")
+        + (modifiedEvent[0][7] ? (" Location: " + escapeHtml(modifiedEvent[0][7]) + "<br/>") : "")
+        + (modifiedEvent[0][8] != modifiedEvent[0][9] ? ("<del>Description: " + (modifiedEvent[0][8] ? escapeHtml(modifiedEvent[0][8]) : "") + "</del><br/>") : "")
+        + (modifiedEvent[0][9] ? (" Description: " + escapeHtml(modifiedEvent[0][9]) + "<br/>") : "")
         + "</li>";
     }
     body += "</ul>";
   }
 
   for (var tgtCal of removedEvents){
-    body += `<br/>${tgtCal[0]}: ${tgtCal[1].length} removed events<br/><ul>`;
+    body += `<br/>${escapeHtml(tgtCal[0])}: ${tgtCal[1].length} removed events<br/><ul>`;
     for (var removedEvent of tgtCal[1]){
       body += "<li>"
-        + "<del>Name: " + removedEvent[0][0] + "</del><br/>"
+        + "<del>Name: " + escapeHtml(removedEvent[0][0]) + "</del><br/>"
         + "<del>Start: " + formatDate(removedEvent[0][1]) + "</del><br/>"
         + "<del>End: " + formatDate(removedEvent[0][2]) + "</del><br/>"
-        + (removedEvent[0][3] ? ("<del>Location: " + removedEvent[0][3] + "</del><br/>") : "")
-        + (removedEvent[0][4] ? ("<del>Description: " + removedEvent[0][4] + "</del><br/>") : "")
+        + (removedEvent[0][3] ? ("<del>Location: " + escapeHtml(removedEvent[0][3]) + "</del><br/>") : "")
+        + (removedEvent[0][4] ? ("<del>Description: " + escapeHtml(removedEvent[0][4]) + "</del><br/>") : "")
         + "</li>";
     }
     body += "</ul>";
@@ -1317,8 +1351,7 @@ function callWithBackoff(func, maxRetries) {
         return null;
       } else {
         Logger.log( "Error, Retrying... [" + err  +"]");
-        Utilities.sleep (Math.pow(2,tries)*100) +
-                            (Math.round(Math.random() * 100));
+        Utilities.sleep(Math.pow(2,tries)*100 + Math.round(Math.random() * 100));
       }
     }
   }
