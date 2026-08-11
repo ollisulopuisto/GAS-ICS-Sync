@@ -229,6 +229,62 @@ test('processTasks: never deletes tasks the script did not create', () => {
 });
 
 //---------------------------------------------------------------------------
+// Update check
+//---------------------------------------------------------------------------
+test('isNewerVersion: compares CalVer versions segment by segment', () => {
+  const ctx = loadScripts();
+  assert.strictEqual(ctx.isNewerVersion('26.08.11.2', '26.08.11.1'), true);
+  assert.strictEqual(ctx.isNewerVersion('26.09.01.1', '26.08.11.1'), true);
+  assert.strictEqual(ctx.isNewerVersion('27.01.01.1', '26.12.31.9'), true);
+  assert.strictEqual(ctx.isNewerVersion('26.08.11.1', '26.08.11.1'), false);
+  assert.strictEqual(ctx.isNewerVersion('26.08.10.9', '26.08.11.1'), false);
+  assert.strictEqual(ctx.isNewerVersion('26.08.11', '26.08.11.1'), false, 'a missing segment counts as 0');
+  assert.strictEqual(ctx.isNewerVersion('26.08.12', '26.08.11.1'), true);
+});
+
+test('isNewerVersion: tolerates a leading v and rubbish input', () => {
+  const ctx = loadScripts();
+  assert.strictEqual(ctx.isNewerVersion('v26.08.11.2', 'v26.08.11.1'), true);
+  assert.strictEqual(ctx.isNewerVersion('', '26.08.11.1'), false);
+  assert.strictEqual(ctx.isNewerVersion('not a version', '26.08.11.1'), false);
+  assert.strictEqual(ctx.isNewerVersion(null, '26.08.11.1'), false);
+});
+
+test('checkForUpdate: emails about a newer release of this fork, once', () => {
+  const sent = [];
+  const fetched = [];
+  const ctx = loadScripts({
+    MailApp: { sendEmail: (to, subject, body) => sent.push({ to, subject, body }) },
+    UrlFetchApp: {
+      fetch: (url) => {
+        fetched.push(url);
+        return { toString: () => JSON.stringify([{ tag_name: 'v99.01.01.1' }]) };
+      },
+    },
+  });
+  ctx.email = 'me@example.com';
+
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 1);
+  assert.ok(fetched[0].includes(ctx.updateRepo), 'checks this fork, not upstream');
+  assert.ok(sent[0].subject.includes('99.01.01.1'));
+
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 1, 'the same version is only ever announced once');
+});
+
+test('checkForUpdate: stays quiet when the release is not newer', () => {
+  const sent = [];
+  const ctx = loadScripts({
+    MailApp: { sendEmail: (to, subject) => sent.push({ to, subject }) },
+    UrlFetchApp: { fetch: () => ({ toString: () => JSON.stringify([{ tag_name: 'v1.00.00.1' }]) }) },
+  });
+  ctx.email = 'me@example.com';
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 0);
+});
+
+//---------------------------------------------------------------------------
 // Stored settings (the settings GUI writes these)
 //---------------------------------------------------------------------------
 test('resolveSettings: returns the script defaults when nothing is stored', () => {

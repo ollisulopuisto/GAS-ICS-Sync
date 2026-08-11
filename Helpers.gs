@@ -1480,23 +1480,56 @@ function checkForUpdate(){
 
   var lastAlertedVersion = PropertiesService.getScriptProperties().getProperty("alertedForNewVersion");
   try {
-    var thisVersion = 5.8;
     var latestVersion = getLatestVersion();
 
-    if (latestVersion > thisVersion && latestVersion != lastAlertedVersion){
+    if (isNewerVersion(latestVersion, scriptVersion) && latestVersion != lastAlertedVersion){
       MailApp.sendEmail(email,
-        `Version ${latestVersion} of GAS-ICS-Sync is available! (You have ${thisVersion})`,
-        "You can see the latest release here: https://github.com/derekantrican/GAS-ICS-Sync/releases");
+        `Version ${latestVersion} of GAS-ICS-Sync is available! (You have ${scriptVersion})`,
+        `You can see the latest release here: https://github.com/${updateRepo}/releases`);
 
       PropertiesService.getScriptProperties().setProperty("alertedForNewVersion", latestVersion);
     }
   }
-  catch (e){}
+  catch (e){
+    Logger.log("[WARNING] Could not check for a new version: " + e);
+  }
 
   function getLatestVersion(){
-    var json_encoded = UrlFetchApp.fetch("https://api.github.com/repos/derekantrican/GAS-ICS-Sync/releases?per_page=1");
-    var json_decoded = JSON.parse(json_encoded);
-    var version = json_decoded[0]["tag_name"];
-    return Number(version);
+    var json_encoded = UrlFetchApp.fetch(`https://api.github.com/repos/${updateRepo}/releases?per_page=1`);
+    var json_decoded = JSON.parse(json_encoded.toString());
+    return json_decoded[0]["tag_name"].toString();
   }
+}
+
+/**
+ * Compares two calendar versions ("YY.MM.DD.build", with or without a leading "v").
+ *
+ * @param {string} candidate - The version to test
+ * @param {string} current - The version to compare against
+ * @return {boolean} True if candidate is newer than current
+ */
+function isNewerVersion(candidate, current){
+  var parse = function(version){
+    if (version == null)
+      return null;
+
+    var parts = version.toString().trim().replace(/^v/i, "").split(".");
+    var numbers = parts.map(function(part){ return parseInt(part, 10); });
+
+    return numbers.some(isNaN) ? null : numbers;
+  };
+
+  var a = parse(candidate);
+  var b = parse(current);
+  if (a == null || b == null)
+    return false;
+
+  for (var i = 0; i < Math.max(a.length, b.length); i++){
+    var left = a[i] || 0;
+    var right = b[i] || 0;
+    if (left != right)
+      return left > right;
+  }
+
+  return false;
 }
