@@ -596,6 +596,29 @@ test('callWithBackoff: sleep is capped so retries cannot eat the execution budge
     assert.ok(ms <= 30000, `backoff sleep ${ms}ms exceeds the 30s cap`);
 });
 
+test('callWithBackoff: retries the transient gateway errors feeds return', () => {
+  for (const code of [429, 502, 520, 521, 522, 523, 524]){
+    const ctx = loadScripts({ Utilities: { sleep: () => {} } });
+    let calls = 0;
+    const result = ctx.callWithBackoff(function(){
+      calls++;
+      if (calls < 3) throw "Error: Encountered HTTP error " + code + " when accessing https://example.com/a.ics";
+      return 'ok';
+    }, 5);
+    assert.strictEqual(result, 'ok', `HTTP ${code} should be retried`);
+  }
+});
+
+test('callWithBackoff: does not retry errors that will not fix themselves', () => {
+  const ctx = loadScripts({ Utilities: { sleep: () => {} } });
+  let calls = 0;
+  assert.throws(() => ctx.callWithBackoff(function(){
+    calls++;
+    throw "Error: Encountered HTTP error 404 when accessing https://example.com/a.ics";
+  }, 5), /404/);
+  assert.strictEqual(calls, 1, 'a 404 is final, so it should not be retried');
+});
+
 test('setupTargetCalendar: pages through the calendar list instead of creating a duplicate', () => {
   const pages = {
     undefined: { items: [{ id: 'c1', summary: 'Other', accessRole: 'owner' }], nextPageToken: 'p2' },

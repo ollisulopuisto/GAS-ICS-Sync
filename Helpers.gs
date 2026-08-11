@@ -1437,9 +1437,18 @@ var backoffRecoverableErrors = [
   "http error 403", // forbidden
   "http error 408", // request timeout
   "http error 423", // locked
+  "http error 429", // too many requests
   "http error 500", // internal server error
+  "http error 502", // bad gateway
   "http error 503", // service unavailable
-  "http error 504"  // gateway timeout
+  "http error 504", // gateway timeout
+  // Cloudflare sits in front of many calendar feeds and returns these while the
+  // server behind it is unreachable, which is usually over in seconds
+  "http error 520", // unknown error
+  "http error 521", // web server is down
+  "http error 522", // connection timed out
+  "http error 523", // origin is unreachable
+  "http error 524"  // a timeout occurred
 ];
 function callWithBackoff(func, maxRetries) {
   var tries = 0;
