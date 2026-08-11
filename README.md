@@ -67,6 +67,13 @@ the code, so they survive updates and are never part of anything you share.
 
 The page also has buttons to sync once, and to turn automatic syncing on and off.
 
+**If you are signed in to several Google accounts**, the settings page names the account it is working on
+("Syncing the calendars of …") — worth a glance before saving, because Chrome opens the link with whichever
+account is active in that window. The deployment runs as the account that created it and is only accessible
+to that account, so opening it as the wrong one gives an error rather than syncing the wrong calendars. If
+that happens, either switch account, or put the account number Google uses in the URL:
+`https://script.google.com/u/1/macros/s/…/exec`.
+
 **Before the first real sync:** turn *Add new events* off, press **Sync now**, and check the execution log
 (**Executions** in the Apps Script sidebar) to confirm the feeds are read correctly. Then turn it back on.
 

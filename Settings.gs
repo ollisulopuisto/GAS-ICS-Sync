@@ -315,6 +315,26 @@ function listWritableCalendarNames(){
 }
 
 /**
+ * The address of the Google account this script runs as, so the settings page can
+ * show it: with several accounts signed in, it is easy to be looking at the wrong one.
+ *
+ * Read from the primary calendar rather than Session.getEffectiveUser(), which would
+ * need an extra authorization scope for the same information.
+ *
+ * @return {string} The account's address, empty if it can't be determined
+ */
+function getAccountEmail(){
+  try{
+    var primary = listAllCalendars().filter(function(cal){ return cal.primary; })[0];
+    return primary ? primary.id.toString() : "";
+  }
+  catch (e){
+    Logger.log("[WARNING] Could not determine the account: " + e);
+    return "";
+  }
+}
+
+/**
  * The event colours Google Calendar accepts, for the settings page to offer.
  *
  * @return {Array.Object} The colours as {id, label}, ordered by id
@@ -350,6 +370,7 @@ function getSettingsForUi(){
       };
     }),
     values : settings,
+    accountEmail : getAccountEmail(),
     calendarNames : listWritableCalendarNames(),
     eventColors : getEventColorOptions(),
     usingStoredSettings : Object.keys(getStoredSettings()).length > 0,

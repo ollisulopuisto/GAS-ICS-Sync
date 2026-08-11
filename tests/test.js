@@ -386,6 +386,40 @@ test('listWritableCalendarNames: an API failure does not break the settings page
   assert.deepStrictEqual(plain(ctx.listWritableCalendarNames()), []);
 });
 
+test('getAccountEmail: reports the account the script runs as, from its primary calendar', () => {
+  const ctx = loadScripts({
+    Calendar: {
+      CalendarList: {
+        list: () => ({
+          items: [
+            { id: 'other@example.com', summary: 'Shared', accessRole: 'writer' },
+            { id: 'me@example.com', summary: 'Mine', accessRole: 'owner', primary: true },
+          ],
+        }),
+      },
+    },
+    CalendarApp: { EventColor: {} },
+  });
+  assert.strictEqual(ctx.getAccountEmail(), 'me@example.com');
+});
+
+test('getAccountEmail: empty when it cannot be determined', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: { list: () => { throw new Error('no'); } } },
+    CalendarApp: { EventColor: {} },
+  });
+  assert.strictEqual(ctx.getAccountEmail(), '');
+});
+
+test('getSettingsForUi: tells the page which account it is running as', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: calendarListStub() },
+    CalendarApp: { EventColor: { RED: '11' } },
+    ScriptApp: { getProjectTriggers: () => [] },
+  });
+  assert.strictEqual('accountEmail' in ctx.getSettingsForUi(), true);
+});
+
 test('getEventColorOptions: offers the colours Google Calendar accepts', () => {
   const ctx = loadScripts({
     Calendar: { CalendarList: calendarListStub() },

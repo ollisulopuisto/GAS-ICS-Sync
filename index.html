@@ -84,7 +84,10 @@
   <body>
     <main>
       <h1>Calendar sync settings</h1>
-      <p class="lede">These are stored for your account only, not in the script, so they survive updates to the code.</p>
+      <p class="lede">
+        These are stored for your account only, not in the script, so they survive updates to the code.
+        <span id="account"></span>
+      </p>
 
       <div id="loading">Loading…</div>
       <form id="settings-form" hidden></form>
@@ -224,6 +227,10 @@
       function render(){
         var form = document.getElementById('settings-form');
         form.textContent = '';
+
+        // With several Google accounts signed in it is easy to be looking at the wrong one
+        document.getElementById('account').textContent =
+          state.accountEmail ? ('Syncing the calendars of ' + state.accountEmail + '.') : '';
 
         if (!state.usingStoredSettings){
           form.appendChild(el('div', { className: 'notice', textContent:
