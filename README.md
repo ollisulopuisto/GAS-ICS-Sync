@@ -34,7 +34,14 @@ Fill in your calendars there, press **Save**, then **Turn on automatic syncing**
 
 To update to a newer version later: `git pull && npm run push`.
 
-### Option B: copy and paste in the browser
+### Option B: copy the ready-made project
+
+[Make your own copy of the Apps Script project](https://script.google.com/d/1WMuXQWWIcDgZhS-BhX2_tOQBy5jde-1mMYAq81itKJItjwiSoJukLPv5/edit?newcopy=true),
+then deploy the settings page as described in option A. Nothing personal comes with the copy — settings
+live in your own Google account, not in the code — but the copy is only as new as the last time it was
+updated, so option A is better if you want to keep up with fixes.
+
+### Option C: copy and paste in the browser
 
 1. Go to [script.google.com](https://script.google.com) and click **New project**
 2. **Project Settings** (gear icon) → tick **"Show 'appsscript.json' manifest file in editor"**
