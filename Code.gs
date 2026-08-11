@@ -113,6 +113,9 @@ var defaultMaxRetries = 10; // Maximum number of retries for api functions (with
 var maxBackoffSleep = 30000; // Maximum time (ms) to wait between retries, so a long retry chain can't use up the whole execution time
 
 function install() {
+  // Settings stored by the settings page win over the values written above
+  applySettings();
+
   // Delete any already existing triggers so we don't create excessive triggers
   deleteAllTriggers();
 
@@ -167,6 +170,9 @@ function startSync(){
     Logger.log("Another iteration is currently running! Exiting...");
     return;
   }
+
+  // Settings stored by the settings page win over the values written above
+  applySettings();
 
   //Disable email notification if no mail adress is provided
   emailSummary = emailSummary && email != "";

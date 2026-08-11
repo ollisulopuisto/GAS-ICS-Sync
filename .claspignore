@@ -1,0 +1,11 @@
+# Everything that must not be pushed to the Apps Script project.
+# clasp matches these against every file, so list the negation first.
+**/**
+!Code.gs
+!Helpers.gs
+!Settings.gs
+!filters.gs
+!tzid.gs
+!ical.js.gs
+!index.html
+!appsscript.json

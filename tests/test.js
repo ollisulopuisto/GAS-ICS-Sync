@@ -229,6 +229,123 @@ test('processTasks: never deletes tasks the script did not create', () => {
 });
 
 //---------------------------------------------------------------------------
+// Stored settings (the settings GUI writes these)
+//---------------------------------------------------------------------------
+test('resolveSettings: returns the script defaults when nothing is stored', () => {
+  const ctx = loadScripts();
+  const settings = ctx.resolveSettings();
+  assert.strictEqual(settings.howFrequent, ctx.howFrequent);
+  assert.strictEqual(settings.genericTitle, ctx.genericTitle);
+  assert.strictEqual(settings.wipeTitles, ctx.wipeTitles);
+});
+
+test('resolveSettings: stored values override the defaults and are coerced by type', () => {
+  const ctx = loadScripts();
+  ctx._userProps.setProperty('settings', JSON.stringify({
+    howFrequent: '30',            // number as string (an HTML form always sends strings)
+    wipeTitles: 'false',
+    genericTitle: 'Busy',
+    syncFutureDays: '90',
+    addAlerts: 'no',
+  }));
+  const settings = ctx.resolveSettings();
+  assert.strictEqual(settings.howFrequent, 30);
+  assert.strictEqual(settings.wipeTitles, false);
+  assert.strictEqual(settings.genericTitle, 'Busy');
+  assert.strictEqual(settings.syncFutureDays, 90);
+  assert.strictEqual(settings.addAlerts, 'no');
+});
+
+test('resolveSettings: invalid or unknown values fall back to the defaults', () => {
+  const ctx = loadScripts();
+  ctx._userProps.setProperty('settings', JSON.stringify({
+    howFrequent: 'not a number',
+    addAlerts: 'maybe',           // not one of the allowed options
+    somethingUnknown: 'ignored',
+  }));
+  const settings = ctx.resolveSettings();
+  assert.strictEqual(settings.howFrequent, ctx.howFrequent);
+  assert.strictEqual(settings.addAlerts, ctx.addAlerts);
+  assert.strictEqual(settings.somethingUnknown, undefined);
+});
+
+test('resolveSettings: empty strings mean "no limit" for the optional numbers', () => {
+  const ctx = loadScripts();
+  ctx._userProps.setProperty('settings', JSON.stringify({ syncPastDays: '', syncFutureDays: '14' }));
+  const settings = ctx.resolveSettings();
+  assert.strictEqual(settings.syncPastDays, null);
+  assert.strictEqual(settings.syncFutureDays, 14);
+});
+
+test('resolveSettings: source calendars are normalized and incomplete rows dropped', () => {
+  const ctx = loadScripts();
+  ctx._userProps.setProperty('settings', JSON.stringify({
+    sourceCalendars: [
+      { url: 'https://a.ics', target: 'Work', color: '11', privacy: 'true' },
+      { url: 'https://b.ics', target: 'Home', color: '', privacy: '' },
+      { url: '', target: 'Nope' },
+      { url: 'https://c.ics', target: '' },
+    ],
+  }));
+  const rows = ctx.resolveSettings().sourceCalendars;
+  assert.strictEqual(rows.length, 2, 'rows without a url or target are dropped');
+  assert.deepStrictEqual(plain(rows[0]), ['https://a.ics', 'Work', '11', true]);
+  assert.strictEqual(rows[1][0], 'https://b.ics');
+  assert.strictEqual(rows[1][1], 'Home');
+  assert.strictEqual(rows[1][2], undefined, 'no color means no color override');
+  assert.strictEqual(rows[1][3], undefined, 'no privacy override means the globals apply');
+});
+
+test('saveSettings: stores known keys only and round-trips through resolveSettings', () => {
+  const ctx = loadScripts();
+  ctx.saveSettings({ genericTitle: 'Reserved', wipeLocations: 'false', bogus: 1 });
+  const stored = JSON.parse(ctx._userProps.getProperty('settings'));
+  assert.strictEqual(stored.bogus, undefined);
+  const settings = ctx.resolveSettings();
+  assert.strictEqual(settings.genericTitle, 'Reserved');
+  assert.strictEqual(settings.wipeLocations, false);
+});
+
+test('resetSettings: goes back to the values written in the script', () => {
+  const ctx = loadScripts();
+  ctx.saveSettings({ genericTitle: 'Reserved' });
+  ctx.resetSettings();
+  assert.strictEqual(ctx.resolveSettings().genericTitle, ctx.genericTitle);
+});
+
+test('applySettings: every defined setting reaches its script variable', () => {
+  const ctx = loadScripts();
+  // Give every setting a value that differs from its default, then check it lands
+  const overrides = {};
+  for (const def of ctx.SETTING_DEFINITIONS){
+    if (def.type === 'boolean') overrides[def.key] = !def.default;
+    else if (def.type === 'number') overrides[def.key] = def.default + 5;
+    else if (def.type === 'nullableNumber') overrides[def.key] = 7;
+    else if (def.type === 'select') overrides[def.key] = def.options.find(o => o !== def.default);
+    else if (def.type === 'calendars') overrides[def.key] = [{ url: 'https://x.ics', target: 'T' }];
+    else overrides[def.key] = 'changed';
+  }
+  ctx.saveSettings(overrides);
+  ctx.applySettings();
+
+  for (const def of ctx.SETTING_DEFINITIONS){
+    assert.notDeepStrictEqual(ctx[def.key], def.default,
+      `setting "${def.key}" is not applied to the script variable of the same name`);
+  }
+});
+
+test('startSync: applies the stored settings before syncing', () => {
+  const ctx = loadScripts();
+  ctx.saveSettings({ genericTitle: 'Reserved', wipeTitles: 'false' });
+  ctx.sourceCalendars = [];
+  ctx.emailSummary = false;
+  ctx.syncCalendar = () => {};
+  ctx.startSync();
+  assert.strictEqual(ctx.genericTitle, 'Reserved');
+  assert.strictEqual(ctx.wipeTitles, false);
+});
+
+//---------------------------------------------------------------------------
 // Privacy placeholders
 //---------------------------------------------------------------------------
 test('applyPrivacySettings: wipes title, description and location per settings', () => {

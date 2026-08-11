@@ -45,7 +45,7 @@ function loadScripts(overrides = {}) {
     ...overrides,
   };
   vm.createContext(context);
-  for (const f of ['Code.gs', 'Helpers.gs', 'filters.gs', 'tzid.gs']) {
+  for (const f of ['Code.gs', 'Helpers.gs', 'Settings.gs', 'filters.gs', 'tzid.gs']) {
     const code = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     vm.runInContext(code, context, { filename: f });
   }

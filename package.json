@@ -1,0 +1,17 @@
+{
+  "name": "gas-ics-sync",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sync ics/ical calendars to Google Calendar with Google Apps Script",
+  "scripts": {
+    "test": "node --test tests/test.js",
+    "login": "clasp login",
+    "create": "clasp create --type webapp --title \"GAS-ICS-Sync\" --rootDir .",
+    "clone": "clasp clone",
+    "push": "clasp push",
+    "open": "clasp open"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}

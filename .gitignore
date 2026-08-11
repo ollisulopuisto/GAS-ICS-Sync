@@ -1,0 +1,4 @@
+node_modules/
+# Contains the id of *your* Apps Script project, so it stays out of the repo
+.clasp.json
+.clasprc.json

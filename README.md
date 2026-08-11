@@ -8,17 +8,60 @@
 
 This is a standalone script (that consists of multiple files). The purpose is to sync ics/ical calendars to Google Calendar. Google Calendar *can* already do this, but updates only happen once every 12 or even 24 hrs. This script can be run much more frequently.
 
-[If you want to use this, please copy the script from here](https://script.google.com/d/1BOk8MDLbLaHh6SwG1M1tsgNXjkcC-79LE0QoipRuTDxbO3fMVvqoROQD/edit?newcopy=true)
+Unlike the original, this fork is configured on a settings page instead of by editing the code, and it can
+hide event details (titles, descriptions, locations) so a work or personal feed can be synced into a
+calendar other people can see.
 
-**To make a copy in the new Google Apps Script interface:**
-1. Go to the project overview icon on the left (looks like this: ⓘ)
-2. Click the "copy" icon on the top right (looks like two files on top of each other)
+## Installing
 
-**NOTE:** If too many people are accessing the file at the same time, Google may lock you out. You can follow these instructions to set up the script: https://github.com/derekantrican/GAS-ICS-Sync/wiki/Setting-up-the-script-manually
+### Option A: from the command line (recommended)
+
+Needs [Node.js](https://nodejs.org). Everything is pushed straight from this repo, so updating later is one command.
+
+```sh
+git clone https://github.com/ollisulopuisto/GAS-ICS-Sync.git
+cd GAS-ICS-Sync
+npm install          # installs clasp, Google's Apps Script CLI
+npm run login        # opens a browser to authorize clasp
+npm run create       # creates the Apps Script project in your account
+npm run push         # uploads the script files
+npm run open         # opens the project in your browser
+```
+
+Then deploy the settings page: **Deploy** → **New deployment** → gear icon → **Web app** →
+Execute as **Me**, access **Only myself** → **Deploy**, and open the URL it gives you.
+Fill in your calendars there, press **Save**, then **Turn on automatic syncing**.
+
+To update to a newer version later: `git pull && npm run push`.
+
+### Option B: copy and paste in the browser
+
+1. Go to [script.google.com](https://script.google.com) and click **New project**
+2. **Project Settings** (gear icon) → tick **"Show 'appsscript.json' manifest file in editor"**
+3. Paste each file from this repo into the editor, adding files with **+** → **Script** for the `.gs` ones
+   and **+** → **HTML** for `index.html` (Google adds the file extension itself, so type `Helpers`, not `Helpers.gs`)
+4. Deploy the settings page as described in option A
+
+### Setting it up
+
+Everything is configured on the settings page — the ics/ical feeds, which Google Calendar each one syncs
+to, how often to sync, and what to hide. The values written at the top of `Code.gs` are only the defaults
+used until you save your own settings, and your settings are stored in your Google account rather than in
+the code, so they survive updates and are never part of anything you share.
+
+The page also has buttons to sync once, and to turn automatic syncing on and off.
+
+**Before the first real sync:** turn *Add new events* off, press **Sync now**, and check the execution log
+(**Executions** in the Apps Script sidebar) to confirm the feeds are read correctly. Then turn it back on.
 
 ---------------
 
 ### Fork changes
+
+**Settings page** — a web app (`Settings.gs` + `index.html`) that stores your settings per Google account
+with `PropertiesService`, instead of editing variables in the code. `Code.gs` still holds the defaults, so
+the script works untouched if you never open the page, and `SETTING_DEFINITIONS` in `Settings.gs` is the
+single place a setting is described — the form builds itself from it.
 
 **Privacy placeholders** — hide event details when syncing into a calendar other people can see:
 
@@ -29,8 +72,9 @@ This is a standalone script (that consists of multiple files). The purpose is to
 | `wipeDescriptions` | Blank out event descriptions |
 | `wipeLocations` | Blank out event locations |
 
-These can be overridden per source with a 4th element in a `sourceCalendars` row — `true` wipes all three,
-or pass an object for individual flags:
+Each feed can override these on the settings page ("Details" column), so you can hide the work feed and
+leave the hobby feed readable. In code that is a 4th element in a `sourceCalendars` row — `true` hides all
+three, or an object for individual flags:
 
 ```js
 var sourceCalendars = [
