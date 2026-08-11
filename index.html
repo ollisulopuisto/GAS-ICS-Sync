@@ -127,8 +127,24 @@
 
       function calendarRow(row){
         var url = el('input', { type: 'text', className: 'cal-url', value: row[0] || '', placeholder: 'https://…/calendar.ics' });
-        var target = el('input', { type: 'text', className: 'cal-target', value: row[1] || '', placeholder: 'Google Calendar name' });
-        var color = el('input', { type: 'text', className: 'cal-color', value: row[2] == null ? '' : row[2], placeholder: 'e.g. 11' });
+
+        // A datalist suggests your existing calendars but still allows a new name,
+        // which the script then creates when it syncs
+        var target = el('input', {
+          type: 'text', className: 'cal-target', value: row[1] || '',
+          placeholder: 'Pick or type a name', autocomplete: 'off'
+        });
+        target.setAttribute('list', 'calendar-names');
+
+        var color = el('select', { className: 'cal-color' });
+        color.appendChild(el('option', { value: '', textContent: 'Calendar default', selected: row[2] == null || row[2] === '' }));
+        (state.eventColors || []).forEach(function(option){
+          color.appendChild(el('option', {
+            value: option.id,
+            textContent: option.label,
+            selected: String(row[2]) === option.id
+          }));
+        });
 
         var privacy = el('select', { className: 'cal-privacy' });
         [['', 'Use the settings below'], ['true', 'Always hide details'], ['false', 'Never hide details']].forEach(function(option){
@@ -151,13 +167,23 @@
           return el('th', { textContent: title });
         }));
 
+        var names = el('datalist', { id: 'calendar-names' });
+        (state.calendarNames || []).forEach(function(name){
+          names.appendChild(el('option', { value: name }));
+        });
+
         var table = el('table', {}, [el('thead', {}, [head]), renderCalendarRows(state.values.sourceCalendars || [])]);
 
         var add = el('button', { type: 'button', textContent: 'Add a feed', style: 'margin: 12px 0 4px' });
         add.addEventListener('click', function(){ document.getElementById('calendar-rows').appendChild(calendarRow([])); });
 
+        var hint = state.calendarNames && state.calendarNames.length
+          ? ' Pick one of your calendars, or type a new name to have it created.'
+          : '';
+
         return el('div', {}, [
-          el('p', { className: 'description', textContent: definition.description, style: 'color: var(--muted); margin: 8px 0' }),
+          el('p', { className: 'description', textContent: definition.description + hint, style: 'color: var(--muted); margin: 8px 0' }),
+          names,
           table,
           add
         ]);

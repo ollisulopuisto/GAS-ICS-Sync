@@ -280,13 +280,11 @@ function fetchSourceCalendars(sourceCalendarURLs){
 }
 
 /**
- * Gets the user's Google Calendar with the specified name.
- * A new Calendar will be created if the user does not have a Calendar with the specified name.
+ * Lists every calendar of the account, following the pages of the API.
  *
- * @param {string} targetCalendarName - The name of the calendar to return
- * @return {Calendar} The calendar retrieved or created
+ * @return {Array.Object} All calendars of this account
  */
-function setupTargetCalendar(targetCalendarName){
+function listAllCalendars(){
   var allCalendars = [];
   var pageToken;
   do {
@@ -301,7 +299,18 @@ function setupTargetCalendar(targetCalendarName){
     pageToken = calendarList.nextPageToken;
   } while (pageToken != null);
 
-  var targetCalendar = allCalendars.filter(function(cal) {
+  return allCalendars;
+}
+
+/**
+ * Gets the user's Google Calendar with the specified name.
+ * A new Calendar will be created if the user does not have a Calendar with the specified name.
+ *
+ * @param {string} targetCalendarName - The name of the calendar to return
+ * @return {Calendar} The calendar retrieved or created
+ */
+function setupTargetCalendar(targetCalendarName){
+  var targetCalendar = listAllCalendars().filter(function(cal) {
     return ((cal.summaryOverride || cal.summary) == targetCalendarName) &&
                 (cal.accessRole == "owner" || cal.accessRole == "writer");
   })[0];

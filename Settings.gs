@@ -290,6 +290,46 @@ function doGet(){
 }
 
 /**
+ * The names of the calendars this account can write to, for the settings page to
+ * offer as suggestions. A name that isn't in the list is still allowed: the script
+ * creates a calendar with that name when it syncs.
+ *
+ * @return {Array.string} The calendar names, sorted and without duplicates
+ */
+function listWritableCalendarNames(){
+  try{
+    var names = listAllCalendars()
+      .filter(function(cal){ return cal.accessRole == "owner" || cal.accessRole == "writer"; })
+      .map(function(cal){ return (cal.summaryOverride || cal.summary || "").toString(); })
+      .filter(function(name){ return name != ""; });
+
+    return names
+      .filter(function(name, index){ return names.indexOf(name) == index; })
+      .sort(function(a, b){ return a.localeCompare(b); });
+  }
+  catch (e){
+    // The settings page still works without the suggestions, so don't fail over this
+    Logger.log("[WARNING] Could not list the calendars of this account: " + e);
+    return [];
+  }
+}
+
+/**
+ * The event colours Google Calendar accepts, for the settings page to offer.
+ *
+ * @return {Array.Object} The colours as {id, label}, ordered by id
+ */
+function getEventColorOptions(){
+  return Object.keys(CalendarApp.EventColor).map(function(name){
+    var label = name.toLowerCase().replace(/_/g, " ");
+    return {
+      id : CalendarApp.EventColor[name].toString(),
+      label : label.charAt(0).toUpperCase() + label.slice(1)
+    };
+  }).sort(function(a, b){ return Number(a.id) - Number(b.id); });
+}
+
+/**
  * Provides the settings page with everything it needs to render the form.
  *
  * @return {Object} The definitions, the current values and whether stored settings exist
@@ -310,6 +350,8 @@ function getSettingsForUi(){
       };
     }),
     values : settings,
+    calendarNames : listWritableCalendarNames(),
+    eventColors : getEventColorOptions(),
     usingStoredSettings : Object.keys(getStoredSettings()).length > 0,
     triggerInstalled : hasSyncTrigger()
   };

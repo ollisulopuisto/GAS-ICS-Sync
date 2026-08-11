@@ -346,6 +346,68 @@ test('startSync: applies the stored settings before syncing', () => {
 });
 
 //---------------------------------------------------------------------------
+// Choices offered by the settings page
+//---------------------------------------------------------------------------
+function calendarListStub(){
+  const pages = {
+    undefined: {
+      items: [
+        { id: 'a', summary: 'Work', accessRole: 'owner' },
+        { id: 'b', summary: 'Read only feed', accessRole: 'reader' },
+        { id: 'c', summary: 'Raw name', summaryOverride: 'Renamed by me', accessRole: 'writer' },
+      ],
+      nextPageToken: 'p2',
+    },
+    p2: {
+      items: [
+        { id: 'd', summary: 'Family', accessRole: 'writer' },
+        { id: 'e', summary: 'Work', accessRole: 'owner' },
+        { id: 'f', summary: 'Someone elses', accessRole: 'freeBusyReader' },
+      ],
+    },
+  };
+  return { list: (opts) => pages[opts.pageToken] };
+}
+
+test('listWritableCalendarNames: only calendars you can write to, deduplicated and sorted', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: calendarListStub() },
+    CalendarApp: { EventColor: { PALE_BLUE: '1', RED: '11' } },
+  });
+  assert.deepStrictEqual(plain(ctx.listWritableCalendarNames()),
+    ['Family', 'Renamed by me', 'Work']);
+});
+
+test('listWritableCalendarNames: an API failure does not break the settings page', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: { list: () => { throw new Error('no'); } } },
+    CalendarApp: { EventColor: {} },
+  });
+  assert.deepStrictEqual(plain(ctx.listWritableCalendarNames()), []);
+});
+
+test('getEventColorOptions: offers the colours Google Calendar accepts', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: calendarListStub() },
+    CalendarApp: { EventColor: { PALE_BLUE: '1', PALE_GREEN: '2', RED: '11' } },
+  });
+  const colors = plain(ctx.getEventColorOptions());
+  assert.deepStrictEqual(colors[0], { id: '1', label: 'Pale blue' });
+  assert.deepStrictEqual(colors[colors.length - 1], { id: '11', label: 'Red' });
+});
+
+test('getSettingsForUi: sends the calendar names and colours to the page', () => {
+  const ctx = loadScripts({
+    Calendar: { CalendarList: calendarListStub() },
+    CalendarApp: { EventColor: { PALE_BLUE: '1', RED: '11' } },
+    ScriptApp: { getProjectTriggers: () => [] },
+  });
+  const state = ctx.getSettingsForUi();
+  assert.deepStrictEqual(plain(state.calendarNames), ['Family', 'Renamed by me', 'Work']);
+  assert.strictEqual(state.eventColors.length, 2);
+});
+
+//---------------------------------------------------------------------------
 // Privacy placeholders
 //---------------------------------------------------------------------------
 test('applyPrivacySettings: wipes title, description and location per settings', () => {
