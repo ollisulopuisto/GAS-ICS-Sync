@@ -4,8 +4,6 @@
 
 > **This is a fork of [derekantrican/GAS-ICS-Sync](https://github.com/derekantrican/GAS-ICS-Sync)** with privacy placeholders, a few extra settings and a set of bug/security fixes on top. See [Fork changes](#fork-changes) below.
 
-### ⚠️⚠️ This project is looking for contributors and people to help answer questions! Please message @developers on the Discord! ⚠️⚠️
-
 This is a standalone script (that consists of multiple files). The purpose is to sync ics/ical calendars to Google Calendar. Google Calendar *can* already do this, but updates only happen once every 12 or even 24 hrs. This script can be run much more frequently.
 
 Unlike the original, this fork is configured on a settings page instead of by editing the code, and it can
@@ -43,14 +41,7 @@ npx clasp deploy --deploymentId <id> --description "Settings page"
 The last step is only needed when the settings page itself changed: the `/exec` URL serves a fixed
 version, so a redeployment is what makes the new page live on the same URL.
 
-### Option B: copy the ready-made project
-
-[Make your own copy of the Apps Script project](https://script.google.com/d/1WMuXQWWIcDgZhS-BhX2_tOQBy5jde-1mMYAq81itKJItjwiSoJukLPv5/edit?newcopy=true),
-then deploy the settings page as described in option A. Nothing personal comes with the copy — settings
-live in your own Google account, not in the code — but the copy is only as new as the last time it was
-updated, so option A is better if you want to keep up with fixes.
-
-### Option C: copy and paste in the browser
+### Option B: copy and paste in the browser
 
 1. Go to [script.google.com](https://script.google.com) and click **New project**
 2. **Project Settings** (gear icon) → tick **"Show 'appsscript.json' manifest file in editor"**
@@ -130,16 +121,11 @@ loaded into a Node vm with stubbed Apps Script globals).
 
 ---------------
 
-### Questions? Comments? Anything else?
-[Join the Discord!](https://discord.gg/DRBpb4k)
+### Questions, problems, contributions
 
-![Discord](https://img.shields.io/discord/612735135120490496)
+Open an [issue](https://github.com/ollisulopuisto/GAS-ICS-Sync/issues) for anything about this fork, or a
+pull request — please run `npm test` first, and add a test for whatever you fixed. For questions about the
+original script there is the [upstream project](https://github.com/derekantrican/GAS-ICS-Sync) and its
+[Discord](https://discord.gg/DRBpb4k).
 
-----------------
-
-### Contributing
-
-If you would like to contribute to this repository, please fork the repository, make your changes, and start a pull request. If your pull request is approved, I will add you as a contributer directly to the repository
-
-
-**If you would like to fund an issue, you can do that through here: https://issuehunt.io/repos/136078981/**
+Licensed under the GPL, like the original.
