@@ -9,6 +9,8 @@
     "create": "clasp create --type webapp --title \"GAS-ICS-Sync\" --rootDir .",
     "clone": "clasp clone",
     "push": "clasp push",
+    "deploy": "clasp deploy --description \"Settings page\"",
+    "deployments": "clasp deployments",
     "open": "clasp open"
   },
   "devDependencies": {

@@ -29,6 +29,8 @@
         }
       }
       * { box-sizing: border-box; }
+      /* The layout rules below set display, which would otherwise override [hidden] */
+      [hidden] { display: none !important; }
       body {
         margin: 0;
         padding: 24px 16px 64px;
