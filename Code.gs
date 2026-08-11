@@ -26,6 +26,8 @@ var sourceCalendars = [                // The ics/ical urls that you want to get
                                        // For instance: ["https://p24-calendars.icloud.com/holidays/us_en.ics", "US Holidays"]
                                        // Or with colors following mapping https://developers.google.com/apps-script/reference/calendar/event-color,
                                        // for instance: ["https://p24-calendars.icloud.com/holidays/us_en.ics", "US Holidays", "11"]
+                                       // A 4th element overrides the wipeTitles/wipeDescriptions/wipeLocations settings for that source only:
+                                       // true wipes all three, or pass an object such as {wipeTitles: true, wipeLocations: true}
   ["icsUrl1", "targetCalendar1"],
   ["icsUrl2", "targetCalendar2"],
   ["icsUrl3", "targetCalendar1"]
@@ -48,7 +50,11 @@ var overrideVisibility = "";              // Changes the visibility of the event
 var wipeTitles = true;                    // Whether to replace the event title with genericTitle (e.g. to hide details when syncing to a shared calendar)
 var genericTitle = "varattu";             // Placeholder title used when wipeTitles is true
 var wipeDescriptions = true;              // Whether to wipe clean the description field
+var wipeLocations = true;                 // Whether to wipe clean the location field
 var addTasks = false;
+
+var syncPastDays = null;                  // Only sync events that ended at most this many days ago (null = no limit, 0 = only events that have not ended yet)
+var syncFutureDays = null;                // Only sync events starting at most this many days from now (null = no limit)
 
 var emailSummary = false;                 // Will email you when an event is added/modified/removed to your calendar
 var email = "";                           // OPTIONAL: If "emailSummary" is set to true or you want to receive update notifications, you will need to provide your email address
@@ -101,6 +107,7 @@ var dateFormat = "YYYY-MM-DD"             // date format in the email summary (e
 //=====================================================================================================
 
 var defaultMaxRetries = 10; // Maximum number of retries for api functions (with exponential backoff)
+var maxBackoffSleep = 30000; // Maximum time (ms) to wait between retries, so a long retry chain can't use up the whole execution time
 
 function install() {
   // Delete any already existing triggers so we don't create excessive triggers
@@ -163,110 +170,13 @@ function startSync(){
 
   sourceCalendars = condenseCalendarMap(sourceCalendars);
   for (var calendar of sourceCalendars){
-    //------------------------ Reset globals ------------------------
-    calendarEvents = [];
-    calendarEventsIds = [];
-    icsEventsIds = [];
-    calendarEventsMD5s = [];
-    recurringEvents = [];
-
-    targetCalendarName = calendar[0];
-    var sourceCalendarURLs = calendar[1];
-    var vevents;
-
-    //------------------------ Fetch URL items ------------------------
-    var fetchResult = fetchSourceCalendars(sourceCalendarURLs);
-    var responses = fetchResult.items;
-    Logger.log("Syncing " + responses.length + " calendars to " + targetCalendarName);
-
-    //------------------------ Get target calendar information------------------------
-    var targetCalendar = setupTargetCalendar(targetCalendarName);
-    targetCalendarId = targetCalendar.id;
-    Logger.log("Working on calendar: " + targetCalendarId);
-
-    //------------------------ Parse existing events --------------------------
-    if(addEventsToCalendar || modifyExistingEvents || removeEventsFromCalendar){
-      var eventList =
-        callWithBackoff(function(){
-            return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500});
-        }, defaultMaxRetries);
-      // If the existing events can't be listed, skip this calendar entirely: adding would
-      // create duplicates and removal would be based on incomplete data
-      if (eventList == null){
-        Logger.log("[ERROR] Could not list existing events of " + targetCalendarName + ". Skipping this calendar.");
-        reportOverallFailure = true;
-        continue;
-      }
-      calendarEvents = [].concat(calendarEvents, eventList.items);
-      //loop until we received all events
-      var eventListFailed = false;
-      while(typeof eventList.nextPageToken !== 'undefined'){
-        eventList = callWithBackoff(function(){
-          return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500, pageToken: eventList.nextPageToken});
-        }, defaultMaxRetries);
-
-        if (eventList == null){
-          eventListFailed = true;
-          break;
-        }
-        calendarEvents = [].concat(calendarEvents, eventList.items);
-      }
-      if (eventListFailed){
-        Logger.log("[ERROR] Could not list all existing events of " + targetCalendarName + ". Skipping this calendar.");
-        reportOverallFailure = true;
-        continue;
-      }
-      Logger.log("Fetched " + calendarEvents.length + " existing events from " + targetCalendarName);
-      for (var i = 0; i < calendarEvents.length; i++){
-        if (calendarEvents[i].extendedProperties != null){
-          calendarEventsIds[i] = calendarEvents[i].extendedProperties.private["rec-id"] || calendarEvents[i].extendedProperties.private["id"];
-          calendarEventsMD5s[i] = calendarEvents[i].extendedProperties.private["MD5"];
-        }
-      }
-
-      //------------------------ Parse ical events --------------------------
-      vevents = parseResponses(responses, icsEventsIds);
-      Logger.log("Parsed " + vevents.length + " events from ical sources");
+    // One broken target calendar must not stop the others from syncing
+    try{
+      syncCalendar(calendar);
     }
-
-    //------------------------ Process ical events ------------------------
-    if (addEventsToCalendar || modifyExistingEvents){
-      Logger.log("Processing " + vevents.length + " events");
-      var calendarTz =
-        callWithBackoff(function(){
-          return Calendar.Settings.get("timezone").value;
-        }, defaultMaxRetries);
-
-      vevents.forEach(function(e){
-        processEvent(e, calendarTz);
-      });
-
-      Logger.log("Done processing events");
-    }
-
-    //------------------------ Remove old events from calendar ------------------------
-    if(removeEventsFromCalendar){
-      // If a source feed couldn't be fetched its events are missing from the parsed data;
-      // removing based on that would delete (and later re-create) all its events
-      if (fetchResult.fetchFailed){
-        Logger.log("[WARNING] Not all sources could be fetched. Skipping event removal for " + targetCalendarName);
-      }
-      else{
-        Logger.log("Checking " + calendarEvents.length + " events for removal");
-        processEventCleanup();
-        Logger.log("Done checking events for removal");
-      }
-    }
-
-    //------------------------ Process Tasks ------------------------
-    if (addTasks){
-      processTasks(responses, fetchResult.fetchFailed);
-    }
-
-    //------------------------ Add Recurring Event Instances ------------------------
-    Logger.log("Processing " + recurringEvents.length + " Recurrence Instances!");
-    for (var recEvent of recurringEvents){
-      processEventInstance(recEvent);
+    catch (e){
+      Logger.log(`[ERROR] Syncing "${calendar[0]}" failed with error "${e}"`);
+      reportOverallFailure = true;
     }
   }
 
@@ -280,5 +190,113 @@ function startSync(){
     // Cause the Google Apps Script "Executions" dashboard to show a failure
     // (the message text does not seem to be logged anywhere)
     throw new Error('The sync operation produced errors. See log for details.');
+  }
+}
+
+/**
+ * Syncs all sources of a single condensed calendar mapping to its target calendar.
+ *
+ * @param {Array} calendar - One entry of the condensed calendar map: [targetCalendarName, [[url, colorId, privacy], ...]]
+ */
+function syncCalendar(calendar){
+  //------------------------ Reset globals ------------------------
+  calendarEvents = [];
+  calendarEventsIds = [];
+  icsEventsIds = [];
+  calendarEventsMD5s = [];
+  recurringEvents = [];
+
+  targetCalendarName = calendar[0];
+  var sourceCalendarURLs = calendar[1];
+  var vevents;
+
+  //------------------------ Fetch URL items ------------------------
+  var fetchResult = fetchSourceCalendars(sourceCalendarURLs);
+  var responses = fetchResult.items;
+  Logger.log("Syncing " + responses.length + " calendars to " + targetCalendarName);
+
+  //------------------------ Get target calendar information------------------------
+  var targetCalendar = setupTargetCalendar(targetCalendarName);
+  targetCalendarId = targetCalendar.id;
+  Logger.log("Working on calendar: " + targetCalendarId);
+
+  //------------------------ Parse existing events --------------------------
+  if(addEventsToCalendar || modifyExistingEvents || removeEventsFromCalendar){
+    var eventList =
+      callWithBackoff(function(){
+          return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500});
+      }, defaultMaxRetries);
+    // If the existing events can't be listed, skip this calendar entirely: adding would
+    // create duplicates and removal would be based on incomplete data
+    if (eventList == null){
+      Logger.log("[ERROR] Could not list existing events of " + targetCalendarName + ". Skipping this calendar.");
+      reportOverallFailure = true;
+      return;
+    }
+    calendarEvents = [].concat(calendarEvents, eventList.items);
+    //loop until we received all events
+    while(typeof eventList.nextPageToken !== 'undefined'){
+      eventList = callWithBackoff(function(){
+        return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500, pageToken: eventList.nextPageToken});
+      }, defaultMaxRetries);
+
+      if (eventList == null){
+        Logger.log("[ERROR] Could not list all existing events of " + targetCalendarName + ". Skipping this calendar.");
+        reportOverallFailure = true;
+        return;
+      }
+      calendarEvents = [].concat(calendarEvents, eventList.items);
+    }
+    Logger.log("Fetched " + calendarEvents.length + " existing events from " + targetCalendarName);
+    for (var i = 0; i < calendarEvents.length; i++){
+      if (calendarEvents[i].extendedProperties != null){
+        calendarEventsIds[i] = calendarEvents[i].extendedProperties.private["rec-id"] || calendarEvents[i].extendedProperties.private["id"];
+        calendarEventsMD5s[i] = calendarEvents[i].extendedProperties.private["MD5"];
+      }
+    }
+
+    //------------------------ Parse ical events --------------------------
+    vevents = parseResponses(responses, icsEventsIds);
+    Logger.log("Parsed " + vevents.length + " events from ical sources");
+  }
+
+  //------------------------ Process ical events ------------------------
+  if (addEventsToCalendar || modifyExistingEvents){
+    Logger.log("Processing " + vevents.length + " events");
+    var calendarTz =
+      callWithBackoff(function(){
+        return Calendar.Settings.get("timezone").value;
+      }, defaultMaxRetries);
+
+    vevents.forEach(function(e){
+      processEvent(e, calendarTz);
+    });
+
+    Logger.log("Done processing events");
+  }
+
+  //------------------------ Remove old events from calendar ------------------------
+  if(removeEventsFromCalendar){
+    // If a source feed couldn't be fetched its events are missing from the parsed data;
+    // removing based on that would delete (and later re-create) all its events
+    if (fetchResult.fetchFailed){
+      Logger.log("[WARNING] Not all sources could be fetched. Skipping event removal for " + targetCalendarName);
+    }
+    else{
+      Logger.log("Checking " + calendarEvents.length + " events for removal");
+      processEventCleanup();
+      Logger.log("Done checking events for removal");
+    }
+  }
+
+  //------------------------ Process Tasks ------------------------
+  if (addTasks){
+    processTasks(responses, fetchResult.fetchFailed);
+  }
+
+  //------------------------ Add Recurring Event Instances ------------------------
+  Logger.log("Processing " + recurringEvents.length + " Recurrence Instances!");
+  for (var recEvent of recurringEvents){
+    processEventInstance(recEvent);
   }
 }

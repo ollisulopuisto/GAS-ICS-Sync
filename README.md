@@ -1,5 +1,7 @@
 # GAS-ICS-Sync
 
+> **This is a fork of [derekantrican/GAS-ICS-Sync](https://github.com/derekantrican/GAS-ICS-Sync)** with privacy placeholders, a few extra settings and a set of bug/security fixes on top. See [Fork changes](#fork-changes) below.
+
 ### ⚠️⚠️ This project is looking for contributors and people to help answer questions! Please message @developers on the Discord! ⚠️⚠️
 
 This is a standalone script (that consists of multiple files). The purpose is to sync ics/ical calendars to Google Calendar. Google Calendar *can* already do this, but updates only happen once every 12 or even 24 hrs. This script can be run much more frequently.
@@ -11,6 +13,40 @@ This is a standalone script (that consists of multiple files). The purpose is to
 2. Click the "copy" icon on the top right (looks like two files on top of each other)
 
 **NOTE:** If too many people are accessing the file at the same time, Google may lock you out. You can follow these instructions to set up the script: https://github.com/derekantrican/GAS-ICS-Sync/wiki/Setting-up-the-script-manually
+
+---------------
+
+### Fork changes
+
+**Privacy placeholders** — hide event details when syncing into a calendar other people can see:
+
+| Setting | Meaning |
+| --- | --- |
+| `wipeTitles` | Replace every event title with `genericTitle` |
+| `genericTitle` | The placeholder title (default `"varattu"`) |
+| `wipeDescriptions` | Blank out event descriptions |
+| `wipeLocations` | Blank out event locations |
+
+These can be overridden per source with a 4th element in a `sourceCalendars` row — `true` wipes all three,
+or pass an object for individual flags:
+
+```js
+var sourceCalendars = [
+  ["https://work.example/feed.ics", "Shared", undefined, true],
+  ["https://hobby.example/feed.ics", "Shared", undefined, {wipeTitles: true}],
+];
+```
+
+**Sync window** — `syncPastDays` / `syncFutureDays` limit how far back and forward events are synced
+(`null` = no limit). They generate the equivalent `dtend`/`dtstart` entries in `filters.gs`.
+
+**Fixes on top of upstream** — TLS certificate validation enabled on feed fetches, HTML escaping in the
+summary email, Google Tasks sync no longer deletes tasks it did not create or duplicates them each run,
+event/task removal is skipped when a feed fails to fetch, one failing calendar no longer aborts the others,
+capped retry backoff, `LockService` instead of a timestamp property, and several smaller parsing fixes.
+
+**Tests** — `node --test tests/test.js` runs the regression tests (no dependencies; the `.gs` files are
+loaded into a Node vm with stubbed Apps Script globals).
 
 ---------------
 

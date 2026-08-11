@@ -101,6 +101,90 @@ function escapeHtml(text){
 }
 
 /**
+ * Expands a per-source privacy setting into a full set of wipe flags.
+ * `true` wipes everything, `false` wipes nothing, an object sets individual flags.
+ *
+ * @param {boolean|Object} privacy - The per-source setting from sourceCalendars
+ * @return {Object} Object with the wipeTitles/wipeDescriptions/wipeLocations flags that are set
+ */
+function normalizePrivacySetting(privacy){
+  if (privacy === true)
+    return { wipeTitles : true, wipeDescriptions : true, wipeLocations : true };
+  if (privacy === false)
+    return { wipeTitles : false, wipeDescriptions : false, wipeLocations : false };
+
+  return privacy;
+}
+
+/**
+ * Determines which fields of an event should be replaced with placeholders.
+ * The per-source setting (if any) overrides the global settings field by field.
+ *
+ * @param {ICAL.Component} event - The event to get the settings for
+ * @return {Object} The wipeTitles/wipeDescriptions/wipeLocations flags to apply
+ */
+function getPrivacySettings(event){
+  var settings = {
+    wipeTitles : wipeTitles,
+    wipeDescriptions : wipeDescriptions,
+    wipeLocations : wipeLocations
+  };
+
+  if (event.hasProperty('privacy')){
+    try{
+      var perSource = JSON.parse(event.getFirstPropertyValue('privacy').toString());
+      for (var key of Object.keys(settings)){
+        if (perSource[key] != undefined)
+          settings[key] = perSource[key];
+      }
+    }
+    catch (e){
+      Logger.log("[WARNING] Could not read the per-source privacy setting: " + e);
+    }
+  }
+
+  return settings;
+}
+
+/**
+ * Replaces the fields selected by the provided settings with placeholders.
+ *
+ * @param {Calendar.Event} newEvent - The event to modify
+ * @param {Object} settings - The wipeTitles/wipeDescriptions/wipeLocations flags to apply
+ */
+function applyPrivacySettings(newEvent, settings){
+  if (settings.wipeTitles)
+    newEvent.summary = genericTitle;
+
+  if (settings.wipeDescriptions)
+    newEvent.description = "";
+
+  if (settings.wipeLocations)
+    newEvent.location = "";
+}
+
+/**
+ * Returns the filters to apply: the user-defined ones from filters.gs plus the
+ * filters generated from the syncPastDays/syncFutureDays settings.
+ *
+ * @return {Array.Object} The filters to apply
+ */
+function getEffectiveFilters(){
+  var generated = [];
+
+  if (syncPastDays != null)
+    generated.push({ parameter : "dtend", type : "include", comparison : ">", offset : -syncPastDays });
+
+  if (syncFutureDays != null)
+    generated.push({ parameter : "dtstart", type : "exclude", comparison : ">", offset : syncFutureDays });
+
+  if (generated.length == 0)
+    return filters;
+
+  return generated.concat(filters);
+}
+
+/**
  * Takes an array of ICS calendars and target Google calendars and combines them
  *
  * @param {Array.string} calendarMap - User-defined calendar map
@@ -118,9 +202,9 @@ function condenseCalendarMap(calendarMap){
     }
 
     if (index > -1)
-      result[index][1].push([mapping[0],mapping[2]]);
+      result[index][1].push([mapping[0],mapping[2],mapping[3]]);
     else
-      result.push([ mapping[1], [[mapping[0],mapping[2]]] ]);
+      result.push([ mapping[1], [[mapping[0],mapping[2],mapping[3]]] ]);
   }
 
   return result;
@@ -203,7 +287,21 @@ function fetchSourceCalendars(sourceCalendarURLs){
  * @return {Calendar} The calendar retrieved or created
  */
 function setupTargetCalendar(targetCalendarName){
-  var targetCalendar = Calendar.CalendarList.list({showHidden: true, maxResults: 250}).items.filter(function(cal) {
+  var allCalendars = [];
+  var pageToken;
+  do {
+    var calendarList = callWithBackoff(function(){
+      return Calendar.CalendarList.list({showHidden: true, maxResults: 250, pageToken: pageToken});
+    }, defaultMaxRetries);
+
+    if (calendarList == null)
+      throw new Error("Could not list the calendars of this account");
+
+    allCalendars = allCalendars.concat(calendarList.items || []);
+    pageToken = calendarList.nextPageToken;
+  } while (pageToken != null);
+
+  var targetCalendar = allCalendars.filter(function(cal) {
     return ((cal.summaryOverride || cal.summary) == targetCalendarName) &&
                 (cal.accessRole == "owner" || cal.accessRole == "writer");
   })[0];
@@ -233,6 +331,7 @@ function parseResponses(responses){
   for (var itm of responses){
     var resp = itm[0];
     var colorId = itm[1];
+    var privacy = itm[2];
     var jcalData = ICAL.parse(resp);
     var component = new ICAL.Component(jcalData);
 
@@ -245,6 +344,11 @@ function parseResponses(responses){
     var allEvents = component.getAllSubcomponents("vevent");
     if (colorId != undefined)
       allEvents.forEach(function(event){event.addPropertyWithValue("color", colorId);});
+
+    if (privacy != undefined){
+      var privacyValue = JSON.stringify(normalizePrivacySetting(privacy));
+      allEvents.forEach(function(event){event.addPropertyWithValue("privacy", privacyValue);});
+    }
 
     var calName = component.getFirstPropertyValue("x-wr-calname") || component.getFirstPropertyValue("name");
     if (calName != null)
@@ -300,9 +404,10 @@ function parseResponses(responses){
  * @return {Array.ICALComponent} Array with filtered events
  */
 function filterResults(events){
-  Logger.log(`Applying ${filters.length} filters on ${events.length} events.`);
+  var effectiveFilters = getEffectiveFilters();
+  Logger.log(`Applying ${effectiveFilters.length} filters on ${events.length} events.`);
 
-  for (var filter of filters){
+  for (var filter of effectiveFilters){
     filter.parameter = filter.parameter.toLowerCase();
     events = events.filter(function(event){
       try{
@@ -778,14 +883,10 @@ function createEvent(event, calendarTz){
   if (event.hasProperty('description'))
     newEvent.description = icalEvent.description;
 
-  if (wipeTitles)
-    newEvent.summary = genericTitle;
-
-  if (wipeDescriptions)
-    newEvent.description = "";
-
   if (event.hasProperty('location'))
     newEvent.location = icalEvent.location;
+
+  applyPrivacySettings(newEvent, getPrivacySettings(event));
 
   var validVisibilityValues = ["default", "public", "private", "confidential"];
   if ( validVisibilityValues.includes(overrideVisibility.toLowerCase()) ) {
@@ -1351,7 +1452,8 @@ function callWithBackoff(func, maxRetries) {
         return null;
       } else {
         Logger.log( "Error, Retrying... [" + err  +"]");
-        Utilities.sleep(Math.pow(2,tries)*100 + Math.round(Math.random() * 100));
+        // Capped so a long retry chain can't eat the 6 minute execution limit on its own
+        Utilities.sleep(Math.min(Math.pow(2,tries)*100 + Math.round(Math.random() * 100), maxBackoffSleep));
       }
     }
   }

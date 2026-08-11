@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { loadScripts } = require('./harness');
 
+// Objects created inside the vm realm have a different prototype, which
+// deepStrictEqual rejects; rebuild them as plain objects of this realm.
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
 //---------------------------------------------------------------------------
 // parseNotificationTime
 //---------------------------------------------------------------------------
@@ -222,6 +226,141 @@ test('processTasks: never deletes tasks the script did not create', () => {
   ctx.processTasks([[ICS_WITH_TODO, undefined]]);
   assert.ok(!removed.includes('user-task-1'),
     'a manually created task in the default list must survive the sync');
+});
+
+//---------------------------------------------------------------------------
+// Privacy placeholders
+//---------------------------------------------------------------------------
+test('applyPrivacySettings: wipes title, description and location per settings', () => {
+  const ctx = loadScripts();
+  const evt = { summary: 'Dentist', description: 'Root canal', location: 'Main St 1' };
+  ctx.applyPrivacySettings(evt, { wipeTitles: true, wipeDescriptions: true, wipeLocations: true });
+  assert.deepStrictEqual(evt, { summary: ctx.genericTitle, description: '', location: '' });
+
+  const evt2 = { summary: 'Dentist', description: 'Root canal', location: 'Main St 1' };
+  ctx.applyPrivacySettings(evt2, { wipeTitles: true, wipeDescriptions: false, wipeLocations: false });
+  assert.deepStrictEqual(evt2, { summary: ctx.genericTitle, description: 'Root canal', location: 'Main St 1' });
+});
+
+test('getPrivacySettings: falls back to the global settings', () => {
+  const ctx = loadScripts();
+  ctx.wipeTitles = true;
+  ctx.wipeDescriptions = false;
+  ctx.wipeLocations = true;
+  const event = { hasProperty: () => false, getFirstPropertyValue: () => null };
+  assert.deepStrictEqual(plain(ctx.getPrivacySettings(event)),
+    { wipeTitles: true, wipeDescriptions: false, wipeLocations: true });
+});
+
+test('getPrivacySettings: per-source setting overrides the globals', () => {
+  const ctx = loadScripts();
+  ctx.wipeTitles = false;
+  ctx.wipeDescriptions = false;
+  ctx.wipeLocations = false;
+  const event = {
+    hasProperty: (p) => p === 'privacy',
+    getFirstPropertyValue: () => JSON.stringify({ wipeTitles: true, wipeLocations: true }),
+  };
+  assert.deepStrictEqual(plain(ctx.getPrivacySettings(event)),
+    { wipeTitles: true, wipeDescriptions: false, wipeLocations: true });
+});
+
+test('condenseCalendarMap: keeps the per-source privacy setting', () => {
+  const ctx = loadScripts();
+  const condensed = ctx.condenseCalendarMap([
+    ['https://a.ics', 'Work', '11', true],
+    ['https://b.ics', 'Work', undefined, { wipeTitles: true }],
+  ]);
+  assert.strictEqual(condensed.length, 1);
+  const sources = condensed[0][1];
+  assert.deepStrictEqual(plain(sources[0]), ['https://a.ics', '11', true]);
+  assert.strictEqual(sources[1][0], 'https://b.ics');
+  assert.strictEqual(sources[1][1], undefined);
+  assert.deepStrictEqual(plain(sources[1][2]), { wipeTitles: true });
+});
+
+//---------------------------------------------------------------------------
+// Sync window
+//---------------------------------------------------------------------------
+test('getEffectiveFilters: no window settings means the user filters are used unchanged', () => {
+  const ctx = loadScripts();
+  ctx.syncPastDays = null;
+  ctx.syncFutureDays = null;
+  ctx.filters = [{ parameter: 'summary', type: 'exclude', comparison: 'contains', criterias: ['x'] }];
+  assert.deepStrictEqual(ctx.getEffectiveFilters(), ctx.filters);
+});
+
+test('getEffectiveFilters: window settings generate dtend/dtstart filters', () => {
+  const ctx = loadScripts();
+  ctx.filters = [];
+  ctx.syncPastDays = 30;
+  ctx.syncFutureDays = 90;
+  assert.deepStrictEqual(plain(ctx.getEffectiveFilters()), [
+    { parameter: 'dtend', type: 'include', comparison: '>', offset: -30 },
+    { parameter: 'dtstart', type: 'exclude', comparison: '>', offset: 90 },
+  ]);
+
+  ctx.syncPastDays = 0;
+  ctx.syncFutureDays = null;
+  assert.deepStrictEqual(plain(ctx.getEffectiveFilters()), [
+    { parameter: 'dtend', type: 'include', comparison: '>', offset: 0 },
+  ]);
+});
+
+//---------------------------------------------------------------------------
+// Robustness
+//---------------------------------------------------------------------------
+test('callWithBackoff: sleep is capped so retries cannot eat the execution budget', () => {
+  const sleeps = [];
+  const ctx = loadScripts({
+    Utilities: { sleep: (ms) => sleeps.push(ms) },
+  });
+  let calls = 0;
+  const result = ctx.callWithBackoff(function(){
+    calls++;
+    if (calls < 12) throw new Error('Rate Limit Exceeded');
+    return 'ok';
+  }, 20);
+  assert.strictEqual(result, 'ok');
+  assert.ok(sleeps.length > 0);
+  for (const ms of sleeps)
+    assert.ok(ms <= 30000, `backoff sleep ${ms}ms exceeds the 30s cap`);
+});
+
+test('setupTargetCalendar: pages through the calendar list instead of creating a duplicate', () => {
+  const pages = {
+    undefined: { items: [{ id: 'c1', summary: 'Other', accessRole: 'owner' }], nextPageToken: 'p2' },
+    p2: { items: [{ id: 'c2', summary: 'Wanted', accessRole: 'owner' }] },
+  };
+  let inserted = 0;
+  const ctx = loadScripts({
+    Calendar: {
+      CalendarList: { list: (opts) => pages[opts.pageToken] },
+      Calendars: { insert: (c) => { inserted++; return c; } },
+      newCalendar: () => ({}),
+      Settings: { get: () => ({ value: 'Europe/Helsinki' }) },
+    },
+  });
+  const cal = ctx.setupTargetCalendar('Wanted');
+  assert.strictEqual(cal.id, 'c2', 'should find the calendar on the second page');
+  assert.strictEqual(inserted, 0, 'must not create a duplicate calendar');
+});
+
+test('startSync: a failing calendar does not abort the remaining calendars', () => {
+  const ctx = loadScripts();
+  const synced = [];
+  ctx.sourceCalendars = [
+    ['https://a.ics', 'Cal A'],
+    ['https://b.ics', 'Cal B'],
+  ];
+  ctx.emailSummary = false;
+  ctx.syncCalendar = function(calendar){
+    if (calendar[0] === 'Cal A') throw new Error('boom');
+    synced.push(calendar[0]);
+  };
+  assert.throws(() => ctx.startSync(), /produced errors/,
+    'the run should still be reported as failed');
+  assert.deepStrictEqual(synced, ['Cal B'], 'the second calendar must still be synced');
 });
 
 test('processTasks: does not duplicate tasks on every run and removes tasks gone from the feed', () => {
