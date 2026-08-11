@@ -67,6 +67,9 @@ the code, so they survive updates and are never part of anything you share.
 
 The page also has buttons to sync once, and to turn automatic syncing on and off.
 
+**Finding the settings page again later:** `npm run settings` opens it, or in the Apps Script editor use
+**Deploy** → **Manage deployments** and copy the web app URL. It never changes, so it is worth bookmarking.
+
 **If you are signed in to several Google accounts**, the settings page names the account it is working on
 ("Syncing the calendars of …") — worth a glance before saving, because Chrome opens the link with whichever
 account is active in that window. The deployment runs as the account that created it and is only accessible

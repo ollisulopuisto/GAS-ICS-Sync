@@ -11,7 +11,8 @@
     "push": "clasp push",
     "deploy": "clasp deploy --description \"Settings page\"",
     "deployments": "clasp deployments",
-    "open": "clasp open"
+    "open": "clasp open",
+    "settings": "clasp open --webapp"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2"
