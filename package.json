@@ -15,6 +15,6 @@
     "settings": "clasp open --webapp"
   },
   "devDependencies": {
-    "@google/clasp": "^2.4.2"
+    "@google/clasp": "^3.4.1"
   }
 }
