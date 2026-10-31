@@ -284,9 +284,11 @@ function resetSettings(){
  * > "Web app", execute as yourself, access "Only myself") and open the deployment URL.
  */
 function doGet(){
+  // Prevent framing in external websites to protect against clickjacking attacks
   return HtmlService.createHtmlOutputFromFile("index")
     .setTitle("GAS-ICS-Sync settings")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1");
+    .addMetaTag("viewport", "width=device-width, initial-scale=1")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
 }
 
 /**

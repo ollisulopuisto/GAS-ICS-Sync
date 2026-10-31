@@ -42,6 +42,25 @@ function loadScripts(overrides = {}) {
     Tasks: {},
     UrlFetchApp: {},
     ICAL: {},
+    HtmlService: {
+      XFrameOptionsMode: {
+        ALLOWALL: 'ALLOWALL',
+        DEFAULT: 'DEFAULT',
+        DENY: 'DENY',
+      },
+      createHtmlOutputFromFile: (filename) => {
+        const output = {
+          _filename: filename,
+          _title: '',
+          _metaTags: [],
+          _xFrameOptionsMode: null,
+          setTitle: function(t) { output._title = t; return output; },
+          addMetaTag: function(name, content) { output._metaTags.push({ name, content }); return output; },
+          setXFrameOptionsMode: function(mode) { output._xFrameOptionsMode = mode; return output; },
+        };
+        return output;
+      },
+    },
     ...overrides,
   };
   vm.createContext(context);
