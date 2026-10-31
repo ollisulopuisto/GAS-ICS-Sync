@@ -425,6 +425,16 @@ function calendarListStub(){
   return { list: (opts) => pages[opts.pageToken] };
 }
 
+test('doGet: serves settings page with clickjacking protection and viewport meta tag', () => {
+  const ctx = loadScripts();
+  const output = ctx.doGet();
+  assert.strictEqual(output._filename, 'index');
+  assert.strictEqual(output._title, 'GAS-ICS-Sync settings');
+  assert.deepStrictEqual(output._metaTags, [{ name: 'viewport', content: 'width=device-width, initial-scale=1' }]);
+  assert.strictEqual(output._xFrameOptionsMode, ctx.HtmlService.XFrameOptionsMode.DENY,
+    'XFrameOptionsMode must be set to DENY to protect against clickjacking');
+});
+
 test('listWritableCalendarNames: only calendars you can write to, deduplicated and sorted', () => {
   const ctx = loadScripts({
     Calendar: { CalendarList: calendarListStub() },
