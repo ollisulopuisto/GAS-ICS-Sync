@@ -1051,11 +1051,16 @@ function processEventInstance(recEvent){
  * If removePastEventsFromCalendar is set to false, events that have taken place will not be removed.
  */
 function processEventCleanup(){
+  // Performance optimization: convert icsEventsIds array into a Set for O(1) membership lookups.
+  // Replacing Array.prototype.indexOf (O(N) scan per event) reduces cleanup from O(N * M) to O(N + M).
+  // For large sync sets (thousands of events), this cuts execution time from hundreds of milliseconds
+  // to a few milliseconds, saving Google Apps Script's strict execution time budget.
+  var icsEventsIdSet = new Set(icsEventsIds);
+
   for (var i = 0; i < calendarEvents.length; i++){
       var currentID = calendarEventsIds[i];
-      var feedIndex = icsEventsIds.indexOf(currentID);
 
-      if(feedIndex  == -1                                             // Event is no longer in source
+      if(!icsEventsIdSet.has(currentID)                               // Event is no longer in source
         && calendarEvents[i].recurringEventId == null                 // And it's not a recurring event
         && (                                                          // And one of:
           removePastEventsFromCalendar                                // We want to remove past events
@@ -1136,8 +1141,10 @@ function processTasks(responses, fetchFailed){
   //-------------- Remove old Tasks -----------
   // Only tasks created by this script (tracked in tasksByUid) are ever removed
   if (removeEventsFromCalendar && !fetchFailed){
+    // Performance optimization: Set lookup replaces O(N) array indexOf scan with O(1) has check
+    var icsTasksIdSet = new Set(icsTasksIds);
     for (var uid of Object.keys(tasksByUid)){
-      if (icsTasksIds.indexOf(uid) == -1){
+      if (!icsTasksIdSet.has(uid)){
         Logger.log("Deleting old task " + tasksByUid[uid]);
         try{
           Tasks.Tasks.remove(taskList.id, tasksByUid[uid]);

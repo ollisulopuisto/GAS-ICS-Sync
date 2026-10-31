@@ -667,3 +667,71 @@ test('processTasks: does not duplicate tasks on every run and removes tasks gone
   ctx.processTasks([['BEGIN:VCALENDAR\nEND:VCALENDAR', undefined]]);
   assert.deepStrictEqual(removed, ['gtask-1']);
 });
+
+//---------------------------------------------------------------------------
+// processEventCleanup
+//---------------------------------------------------------------------------
+test('processEventCleanup: removes events not in feed and keeps events present in feed', () => {
+  const removedEventIds = [];
+  const ctx = loadScripts({
+    Calendar: {
+      Events: {
+        remove: (calendarId, eventId) => {
+          removedEventIds.push({ calendarId, eventId });
+        },
+      },
+    },
+  });
+
+  ctx.targetCalendarId = 'primary';
+  ctx.targetCalendarName = 'Primary';
+  ctx.removePastEventsFromCalendar = true;
+  ctx.emailSummary = true;
+
+  // 3 existing calendar events:
+  // - uid1: still in feed
+  // - uid2: gone from feed
+  // - uid3: gone from feed, but is recurring instance (recurringEventId is set), so should not be removed
+  ctx.calendarEvents = [
+    { id: 'gcal_1', summary: 'Event 1', recurringEventId: null, start: { dateTime: '2026-08-11T10:00:00Z' }, end: { dateTime: '2026-08-11T11:00:00Z' }, location: 'Room 1', description: 'Desc 1' },
+    { id: 'gcal_2', summary: 'Event 2', recurringEventId: null, start: { dateTime: '2026-08-11T12:00:00Z' }, end: { dateTime: '2026-08-11T13:00:00Z' }, location: 'Room 2', description: 'Desc 2' },
+    { id: 'gcal_3', summary: 'Event 3', recurringEventId: '20260811T140000Z', start: { dateTime: '2026-08-11T14:00:00Z' }, end: { dateTime: '2026-08-11T15:00:00Z' }, location: 'Room 3', description: 'Desc 3' },
+  ];
+  ctx.calendarEventsIds = ['uid1', 'uid2', 'uid3'];
+  ctx.icsEventsIds = ['uid1'];
+
+  ctx.processEventCleanup();
+
+  assert.strictEqual(removedEventIds.length, 1, 'only uid2 should be deleted');
+  assert.strictEqual(removedEventIds[0].eventId, 'gcal_2');
+  assert.strictEqual(ctx.removedEvents.length, 1);
+  assert.strictEqual(ctx.removedEvents[0][0][0], 'Event 2');
+});
+
+test('processEventCleanup: respects removePastEventsFromCalendar false for past events', () => {
+  const removedEventIds = [];
+  const ctx = loadScripts({
+    Calendar: {
+      Events: {
+        remove: (calendarId, eventId) => {
+          removedEventIds.push({ calendarId, eventId });
+        },
+      },
+    },
+  });
+
+  ctx.targetCalendarId = 'primary';
+  ctx.targetCalendarName = 'Primary';
+  ctx.removePastEventsFromCalendar = false;
+
+  // Past event absent from feed
+  ctx.calendarEvents = [
+    { id: 'gcal_past', summary: 'Past Event', recurringEventId: null, start: { dateTime: '2000-01-01T10:00:00Z' }, end: { dateTime: '2000-01-01T11:00:00Z' } },
+  ];
+  ctx.calendarEventsIds = ['past_uid'];
+  ctx.icsEventsIds = [];
+
+  ctx.processEventCleanup();
+
+  assert.strictEqual(removedEventIds.length, 0, 'past event should not be removed when removePastEventsFromCalendar is false');
+});
