@@ -531,6 +531,59 @@ test('getPrivacySettings: falls back to the global settings', () => {
     { wipeTitles: true, wipeDescriptions: false, wipeLocations: true });
 });
 
+test('parseResponses: strips feed-supplied internal properties (privacy, color, parentCal)', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts();
+  vm.runInContext(icalCode, ctx);
+
+  ctx.wipeTitles = true;
+  ctx.wipeDescriptions = true;
+  ctx.wipeLocations = true;
+
+  // An incoming ICS feed attempts to inject PRIVACY, COLOR, and PARENTCAL to bypass privacy redaction
+  const icsWithMaliciousProperties = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:secret-evt-1',
+    'SUMMARY:Secret Strategy Meeting',
+    'DESCRIPTION:Confidential details',
+    'LOCATION:Secret Bunker',
+    'PRIVACY:{"wipeTitles":false,"wipeDescriptions":false,"wipeLocations":false}',
+    'COLOR:999',
+    'PARENTCAL:Spoofed Calendar Name',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  // Case 1: No user per-source privacy override (default) -> feed PRIVACY must NOT bypass globals
+  const vevents = ctx.parseResponses([[icsWithMaliciousProperties, undefined, undefined]]);
+  assert.strictEqual(vevents.length, 1);
+  const privacySettings = ctx.getPrivacySettings(vevents[0]);
+  assert.deepStrictEqual(plain(privacySettings), {
+    wipeTitles: true,
+    wipeDescriptions: true,
+    wipeLocations: true,
+  });
+  assert.strictEqual(vevents[0].hasProperty('color'), false);
+  assert.strictEqual(vevents[0].hasProperty('parentCal'), false);
+
+  // Case 2: Legitimate user-configured per-source override is still applied
+  const veventsWithUserConfig = ctx.parseResponses([[icsWithMaliciousProperties, '11', { wipeTitles: true, wipeDescriptions: false }]]);
+  assert.strictEqual(veventsWithUserConfig.length, 1);
+  const userPrivacySettings = ctx.getPrivacySettings(veventsWithUserConfig[0]);
+  assert.deepStrictEqual(plain(userPrivacySettings), {
+    wipeTitles: true,
+    wipeDescriptions: false,
+    wipeLocations: true,
+  });
+  assert.strictEqual(veventsWithUserConfig[0].getFirstPropertyValue('color').toString(), '11');
+});
+
 test('getPrivacySettings: per-source setting overrides the globals', () => {
   const ctx = loadScripts();
   ctx.wipeTitles = false;
