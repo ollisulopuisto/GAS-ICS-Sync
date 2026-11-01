@@ -351,6 +351,16 @@ function parseResponses(responses){
     }
 
     var allEvents = component.getAllSubcomponents("vevent");
+
+    // Security: Strip feed-supplied internal properties before attaching script-controlled ones.
+    // Untrusted feeds must not inject synthetic properties like `privacy` (which could override
+    // user privacy placeholders and leak private event details) or `color`/`parentCal`.
+    allEvents.forEach(function(event){
+      event.removeAllProperties("privacy");
+      event.removeAllProperties("color");
+      event.removeAllProperties("parentCal");
+    });
+
     if (colorId != undefined)
       allEvents.forEach(function(event){event.addPropertyWithValue("color", colorId);});
 
