@@ -745,3 +745,28 @@ test('processEventCleanup: respects removePastEventsFromCalendar false for past 
 
   assert.strictEqual(removedEventIds.length, 0, 'past event should not be removed when removePastEventsFromCalendar is false');
 });
+
+//---------------------------------------------------------------------------
+// validateTimeZone
+//---------------------------------------------------------------------------
+test('validateTimeZone: preserves valid IANA timezones', () => {
+  const ctx = loadScripts();
+  assert.strictEqual(ctx.validateTimeZone('Europe/Helsinki', 'UTC'), 'Europe/Helsinki');
+  assert.strictEqual(ctx.validateTimeZone('America/New_York', 'UTC'), 'America/New_York');
+  assert.strictEqual(ctx.validateTimeZone('UTC', 'Europe/London'), 'UTC');
+});
+
+test('validateTimeZone: maps Windows/alias timezone names to IANA', () => {
+  const logs = [];
+  const ctx = loadScripts({ Logger: { log: (msg) => logs.push(msg) } });
+  assert.strictEqual(ctx.validateTimeZone('Eastern Standard Time', 'UTC'), 'America/New_York');
+  assert.strictEqual(ctx.validateTimeZone('W. Europe Standard Time', 'UTC'), 'Europe/Berlin');
+  assert.ok(logs.some(l => l.includes('Converting ICS timezone Eastern Standard Time to Google Calendar (IANA) timezone America/New_York')));
+});
+
+test('validateTimeZone: falls back to calendar timezone for unknown/floating timezones', () => {
+  const logs = [];
+  const ctx = loadScripts({ Logger: { log: (msg) => logs.push(msg) } });
+  assert.strictEqual(ctx.validateTimeZone('Unknown/Floating_TZ', 'Europe/Paris'), 'Europe/Paris');
+  assert.ok(logs.some(l => l.includes('Converting ICS timezone Unknown/Floating_TZ to Google Calendar (IANA) timezone Europe/Paris')));
+});
