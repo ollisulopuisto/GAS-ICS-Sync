@@ -142,6 +142,51 @@ test('fetchSourceCalendars: reports fetch failures so cleanup can be skipped', (
   assert.strictEqual(result2.fetchFailed, false);
 });
 
+test('fetchSourceCalendars: preserves per-source privacy setting to prevent sensitive data exposure', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+
+  const ctx = loadScripts({
+    UrlFetchApp: makeFetchStub({
+      'https://example.com/private.ics': {
+        code: 200,
+        body: 'BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:confidential-1\nSUMMARY:Board Meeting\nDESCRIPTION:Confidential\nLOCATION:HQ\nDTSTART:20260811T100000Z\nDTEND:20260811T110000Z\nEND:VEVENT\nEND:VCALENDAR',
+      },
+    }, []),
+  });
+  vm.runInContext(icalCode, ctx);
+
+  // Global settings: privacy wiping is disabled
+  ctx.wipeTitles = false;
+  ctx.wipeDescriptions = false;
+  ctx.wipeLocations = false;
+
+  // Source configured with per-source privacy override: true (wipe all sensitive fields)
+  const fetchResult = ctx.fetchSourceCalendars([
+    ['https://example.com/private.ics', '11', true],
+  ]);
+  assert.strictEqual(fetchResult.items.length, 1);
+  assert.strictEqual(fetchResult.items[0][1], '11');
+  assert.strictEqual(fetchResult.items[0][2], true, 'per-source privacy override must be preserved');
+
+  // Verify end-to-end: parseResponses attaches privacy and getPrivacySettings respects it
+  const vevents = ctx.parseResponses(fetchResult.items);
+  assert.strictEqual(vevents.length, 1);
+  const effectivePrivacy = ctx.getPrivacySettings(vevents[0]);
+  assert.deepStrictEqual(plain(effectivePrivacy), {
+    wipeTitles: true,
+    wipeDescriptions: true,
+    wipeLocations: true,
+  });
+
+  const evt = { summary: 'Board Meeting', description: 'Confidential', location: 'HQ' };
+  ctx.applyPrivacySettings(evt, effectivePrivacy);
+  assert.strictEqual(evt.summary, ctx.genericTitle);
+  assert.strictEqual(evt.description, '');
+  assert.strictEqual(evt.location, '');
+});
+
 //---------------------------------------------------------------------------
 // processEventInstance: both extended-property filters must reach the API
 //---------------------------------------------------------------------------

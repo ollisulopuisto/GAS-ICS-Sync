@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-02 - Per-Source Privacy Configuration Silently Dropped During Feed Fetching
+**Vulnerability:** In `Helpers.gs`, `fetchSourceCalendars` receives source tuples `[url, colorId, privacy]` but only pushed `[urlContent[0], colorId]` to the result list, silently discarding `source[2]` (`privacy`). When `parseResponses` ran during `syncCalendar`, `itm[2]` was always `undefined`, causing per-source privacy overrides to never be attached to parsed events. If a user configured per-source privacy redaction (`wipeTitles`, `wipeDescriptions`, `wipeLocations`) on sensitive feeds syncing to a shared or public calendar while keeping global wipe settings disabled, sensitive event details from those feeds were published in full plaintext.
+**Learning:** Pipeline functions that fetch or transform multi-attribute configurations across intermediate stages must preserve and forward all configuration metadata (e.g., tuple forwarding) to downstream processors.
+**Prevention:** Include end-to-end integration tests that verify configuration flags survive every intermediate layer from source mapping to API payload preparation.
+
 ## 2026-11-01 - Untrusted ICS Feed Internal Property Injection
 **Vulnerability:** External ICS feeds can inject custom properties matching internal script properties (specifically `privacy`, `color`, and `parentCal`). When parsing feeds with ical.js, `getPrivacySettings` checked `event.hasProperty('privacy')` and parsed the JSON payload. If the user had not configured a per-source privacy override, a feed-supplied `PRIVACY:{"wipeTitles":false,...}` was parsed and used instead of the user's global privacy settings (`wipeTitles`, `wipeDescriptions`, `wipeLocations`), exposing sensitive event details to shared/public calendars.
 **Learning:** In Google Apps Script and custom parser workflows where in-memory object properties are augmented onto parsed components (synthetic metadata on `ICAL.Component`), untrusted input components must be sanitized by stripping internal/synthetic property keys before applying script-managed properties.
