@@ -226,7 +226,7 @@ function deleteAllTriggers(){
  * Gets the ressource from the specified URLs.
  *
  * @param {Array.string} sourceCalendarURLs - Array with URLs to fetch
- * @return {Object} {items: fetched [content, colorId] pairs, fetchFailed: true if any source could not be fetched}
+ * @return {Object} {items: fetched [content, colorId, privacy] tuples, fetchFailed: true if any source could not be fetched}
  */
 function fetchSourceCalendars(sourceCalendarURLs){
   var result = []
@@ -234,6 +234,10 @@ function fetchSourceCalendars(sourceCalendarURLs){
   for (var source of sourceCalendarURLs){
     var url = source[0].replace("webcal://", "https://");
     var colorId = source[1];
+    // Security: Preserve per-source privacy override (source[2]). Dropping it here would cause
+    // parseResponses to fall back to global privacy settings and expose sensitive calendar event details
+    // (titles, descriptions, locations) when syncing feeds configured with per-source privacy redactions.
+    var privacy = source[2];
 
     try {
       callWithBackoff(function() {
@@ -261,7 +265,7 @@ function fetchSourceCalendars(sourceCalendarURLs){
             }
             Logger.log("[WARNING] Microsoft is incorrectly formatting ics/ical at: " + url)
           }
-          result.push([urlContent[0], colorId]);
+          result.push([urlContent[0], colorId, privacy]);
           return;
         }
         else{ //Throw here to make callWithBackoff run again
