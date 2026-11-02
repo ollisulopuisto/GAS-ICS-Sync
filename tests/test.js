@@ -823,3 +823,82 @@ test('validateTimeZone: falls back to calendar timezone for unknown/floating tim
   assert.strictEqual(ctx.validateTimeZone('Unknown/Floating_TZ', 'Europe/Paris'), 'Europe/Paris');
   assert.ok(logs.some(l => l.includes('Converting ICS timezone Unknown/Floating_TZ to Google Calendar (IANA) timezone Europe/Paris')));
 });
+
+//---------------------------------------------------------------------------
+// createEvent: unchanged event detection via MD5 digest
+//---------------------------------------------------------------------------
+test('createEvent: skips unchanged event when MD5 digest is present in calendarEventsMD5s', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const logs = [];
+  const ctx = loadScripts({ Logger: { log: (msg) => logs.push(msg) } });
+  vm.runInContext(icalCode, ctx);
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:unchanged-uid-1',
+    'SUMMARY:Existing Meeting',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(ics);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  // Compute expected digest identical to createEvent
+  vevent.removeProperty('dtstamp');
+  const icalEvent = new ctx.ICAL.Event(vevent);
+  const expectedDigest = ctx.Utilities.computeDigest(
+    ctx.Utilities.DigestAlgorithm.MD5,
+    icalEvent.toString(),
+    ctx.Utilities.Charset.UTF_8
+  ).toString();
+
+  // Populate calendarEventsMD5s with the digest
+  ctx.calendarEventsMD5s = [expectedDigest];
+
+  const result = ctx.createEvent(vevent, 'UTC');
+  assert.strictEqual(result, undefined, 'createEvent should return undefined/null for unchanged event');
+  assert.ok(logs.some(l => l.includes('Skipping unchanged Event unchanged-uid-1')));
+});
+
+test('createEvent: creates event when MD5 digest is not in calendarEventsMD5s', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts({
+    Calendar: {
+      newEvent: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:new-uid-2',
+    'SUMMARY:Brand New Meeting',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(ics);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  ctx.calendarEventsMD5s = ['some_other_md5'];
+
+  const result = ctx.createEvent(vevent, 'UTC');
+  assert.ok(result, 'createEvent should return event object for changed/new event');
+  assert.strictEqual(result.summary, 'varattu'); // default wipeTitles is true
+  assert.strictEqual(result.extendedProperties.private.id, 'new-uid-2');
+});

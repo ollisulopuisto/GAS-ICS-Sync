@@ -153,6 +153,7 @@ var calendarEvents = [];
 var calendarEventsIds = [];
 var icsEventsIds = [];
 var calendarEventsMD5s = [];
+var calendarEventsMD5Set = null;
 var recurringEvents = [];
 var targetCalendarId;
 var targetCalendarName;
@@ -216,6 +217,7 @@ function syncCalendar(calendar){
   calendarEventsIds = [];
   icsEventsIds = [];
   calendarEventsMD5s = [];
+  calendarEventsMD5Set = null;
   recurringEvents = [];
 
   targetCalendarName = calendar[0];
