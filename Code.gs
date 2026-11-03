@@ -151,6 +151,7 @@ function uninstall(){
 // Per-calendar global variables (must be reset before processing each new calendar!)
 var calendarEvents = [];
 var calendarEventsIds = [];
+var calendarEventsIdMap = null;
 var icsEventsIds = [];
 var calendarEventsMD5s = [];
 var calendarEventsMD5Set = null;
@@ -215,6 +216,7 @@ function syncCalendar(calendar){
   //------------------------ Reset globals ------------------------
   calendarEvents = [];
   calendarEventsIds = [];
+  calendarEventsIdMap = null;
   icsEventsIds = [];
   calendarEventsMD5s = [];
   calendarEventsMD5Set = null;
