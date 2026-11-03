@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-03 - Organizer and Title Privacy Leak During Title Prefixing
+**Vulnerability:** When `wipeTitles` was active, `applyPrivacySettings` set `newEvent.summary = genericTitle`. However, in `createEvent`, `addOrganizerToTitle` prefixed `newEvent.summary` with the organizer name (`organizerName + ": " + newEvent.summary`), and if `addCalToTitle` was also enabled, it further modified `newEvent.summary`. Prior to this fix, if `applyPrivacySettings` only overwrote `summary` with `genericTitle`, the calendar prefix was lost, or if `applyPrivacySettings` was evaluated before organizer prefixing, sensitive organizer identities and original event titles were exposed on public/shared destination calendars despite the user enabling privacy placeholders (`wipeTitles`).
+**Learning:** Post-processing privacy transforms must ensure that all sensitive field mutations (such as organizer title prepending) cannot re-expose or override redaction guarantees.
+**Prevention:** Centralize summary sanitization in `applyPrivacySettings` so privacy placeholders reliably govern final title construction and prevent upstream or downstream feature flags from leaking event metadata.
+
 ## 2026-11-02 - Per-Source Privacy Configuration Silently Dropped During Feed Fetching
 **Vulnerability:** In `Helpers.gs`, `fetchSourceCalendars` receives source tuples `[url, colorId, privacy]` but only pushed `[urlContent[0], colorId]` to the result list, silently discarding `source[2]` (`privacy`). When `parseResponses` ran during `syncCalendar`, `itm[2]` was always `undefined`, causing per-source privacy overrides to never be attached to parsed events. If a user configured per-source privacy redaction (`wipeTitles`, `wipeDescriptions`, `wipeLocations`) on sensitive feeds syncing to a shared or public calendar while keeping global wipe settings disabled, sensitive event details from those feeds were published in full plaintext.
 **Learning:** Pipeline functions that fetch or transform multi-attribute configurations across intermediate stages must preserve and forward all configuration metadata (e.g., tuple forwarding) to downstream processors.

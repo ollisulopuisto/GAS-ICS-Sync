@@ -566,6 +566,49 @@ test('applyPrivacySettings: wipes title, description and location per settings',
   assert.deepStrictEqual(evt2, { summary: ctx.genericTitle, description: 'Root canal', location: 'Main St 1' });
 });
 
+test('createEvent: wipeTitles prevents organizer and original event title from leaking when addOrganizerToTitle or addCalToTitle is set', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts({
+    Calendar: {
+      newEvent: () => ({}),
+      newEventOrganizer: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  ctx.wipeTitles = true;
+  ctx.genericTitle = 'Confidential Placeholder';
+  ctx.addOrganizerToTitle = true;
+  ctx.addCalToTitle = true;
+
+  const icsWithOrganizer = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:leak-test-1',
+    'SUMMARY:Sensitive Quarterly Review',
+    'ORGANIZER;CN=CEO Alice:mailto:alice@example.com',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(icsWithOrganizer);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+  vevent.addPropertyWithValue('parentCal', 'WorkCal');
+
+  const result = ctx.createEvent(vevent, 'UTC');
+  assert.ok(result);
+  // Must preserve calendar prefix if enabled, but organizer and confidential summary must NOT be present
+  assert.strictEqual(result.summary, '(WorkCal) Confidential Placeholder');
+  assert.ok(!result.summary.includes('CEO Alice'), 'Organizer name must not leak into summary when wipeTitles is enabled');
+  assert.ok(!result.summary.includes('Sensitive Quarterly Review'), 'Original title must not leak when wipeTitles is enabled');
+});
+
 test('getPrivacySettings: falls back to the global settings', () => {
   const ctx = loadScripts();
   ctx.wipeTitles = true;
