@@ -151,10 +151,16 @@ function getPrivacySettings(event){
  *
  * @param {Calendar.Event} newEvent - The event to modify
  * @param {Object} settings - The wipeTitles/wipeDescriptions/wipeLocations flags to apply
+ * @param {?ICAL.Component} [event] - The original ICAL event component
  */
-function applyPrivacySettings(newEvent, settings){
-  if (settings.wipeTitles)
-    newEvent.summary = genericTitle;
+function applyPrivacySettings(newEvent, settings, event){
+  if (settings.wipeTitles){
+    // Security: When replacing event titles with privacy placeholders, ensure that
+    // source calendar prefix is preserved if addCalToTitle is set, while preventing
+    // sensitive details like organizer name or original titles from leaking.
+    var prefix = (addCalToTitle && event && event.hasProperty('parentCal')) ? "(" + event.getFirstPropertyValue('parentCal') + ") " : "";
+    newEvent.summary = prefix + genericTitle;
+  }
 
   if (settings.wipeDescriptions)
     newEvent.description = "";
@@ -917,7 +923,7 @@ function createEvent(event, calendarTz){
   if (event.hasProperty('location'))
     newEvent.location = icalEvent.location;
 
-  applyPrivacySettings(newEvent, getPrivacySettings(event));
+  applyPrivacySettings(newEvent, getPrivacySettings(event), event);
 
   var validVisibilityValues = ["default", "public", "private", "confidential"];
   if ( validVisibilityValues.includes(overrideVisibility.toLowerCase()) ) {
