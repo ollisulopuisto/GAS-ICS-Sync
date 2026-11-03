@@ -913,6 +913,129 @@ test('validateTimeZone: falls back to calendar timezone for unknown/floating tim
 });
 
 //---------------------------------------------------------------------------
+// processEvent: routing to update vs insert using calendarEventsIdMap
+//---------------------------------------------------------------------------
+test('processEvent: updates existing event when ID is found in calendarEventsIds via calendarEventsIdMap', () => {
+  const updated = [];
+  const inserted = [];
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+
+  const ctx = loadScripts({
+    Calendar: {
+      Events: {
+        update: (eventObj, calendarId, existingId) => {
+          updated.push({ eventObj, calendarId, existingId });
+          return eventObj;
+        },
+        insert: (eventObj, calendarId) => {
+          inserted.push({ eventObj, calendarId });
+          return eventObj;
+        },
+      },
+      newEvent: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  ctx.targetCalendarId = 'work_calendar';
+  ctx.targetCalendarName = 'Work';
+  ctx.modifyExistingEvents = true;
+  ctx.addEventsToCalendar = true;
+
+  ctx.calendarEvents = [
+    { id: 'gcal_existing_1', summary: 'Old Title', start: { dateTime: '2026-08-11T10:00:00Z' }, end: { dateTime: '2026-08-11T11:00:00Z' } },
+  ];
+  ctx.calendarEventsIds = ['evt-uid-existing'];
+  ctx.calendarEventsMD5s = []; // not skipping via unchanged MD5 check
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:evt-uid-existing',
+    'SUMMARY:Updated Meeting',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(ics);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  ctx.processEvent(vevent, 'UTC');
+
+  assert.strictEqual(updated.length, 1, 'should call Calendar.Events.update');
+  assert.strictEqual(updated[0].existingId, 'gcal_existing_1');
+  assert.strictEqual(inserted.length, 0, 'should not call Calendar.Events.insert');
+  assert.ok(ctx.calendarEventsIdMap && typeof ctx.calendarEventsIdMap.get === 'function', 'calendarEventsIdMap should be initialized');
+  assert.strictEqual(ctx.calendarEventsIdMap.get('evt-uid-existing'), 0);
+});
+
+test('processEvent: inserts new event when ID is not found in calendarEventsIds', () => {
+  const updated = [];
+  const inserted = [];
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+
+  const ctx = loadScripts({
+    Calendar: {
+      Events: {
+        update: (eventObj, calendarId, existingId) => {
+          updated.push({ eventObj, calendarId, existingId });
+          return eventObj;
+        },
+        insert: (eventObj, calendarId) => {
+          inserted.push({ eventObj, calendarId });
+          return eventObj;
+        },
+      },
+      newEvent: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  ctx.targetCalendarId = 'work_calendar';
+  ctx.targetCalendarName = 'Work';
+  ctx.modifyExistingEvents = true;
+  ctx.addEventsToCalendar = true;
+
+  ctx.calendarEvents = [
+    { id: 'gcal_existing_1', summary: 'Old Title', start: { dateTime: '2026-08-11T10:00:00Z' }, end: { dateTime: '2026-08-11T11:00:00Z' } },
+  ];
+  ctx.calendarEventsIds = ['evt-uid-existing'];
+  ctx.calendarEventsMD5s = [];
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:evt-uid-brand-new',
+    'SUMMARY:Brand New Meeting',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(ics);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  ctx.processEvent(vevent, 'UTC');
+
+  assert.strictEqual(updated.length, 0, 'should not call Calendar.Events.update');
+  assert.strictEqual(inserted.length, 1, 'should call Calendar.Events.insert');
+  assert.strictEqual(inserted[0].calendarId, 'work_calendar');
+  assert.ok(ctx.calendarEventsIdMap && typeof ctx.calendarEventsIdMap.has === 'function', 'calendarEventsIdMap should be initialized');
+  assert.strictEqual(ctx.calendarEventsIdMap.has('evt-uid-brand-new'), false);
+});
+
+//---------------------------------------------------------------------------
 // createEvent: unchanged event detection via MD5 digest
 //---------------------------------------------------------------------------
 test('createEvent: skips unchanged event when MD5 digest is present in calendarEventsMD5s', () => {
