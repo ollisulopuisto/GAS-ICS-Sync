@@ -90,6 +90,22 @@ test('sendSummary: feed-controlled fields are HTML-escaped in the email body', (
   assert.ok(sent.htmlBody.includes('&lt;script&gt;'), 'escaped content should remain visible');
 });
 
+test('sendSummary: customEmailSubject strips CRLF characters to prevent header injection', () => {
+  let sent = null;
+  const ctx = loadScripts({ MailApp: { sendEmail: (msg) => { sent = msg; } } });
+  ctx.email = 'me@example.com';
+  ctx.customEmailSubject = 'Injected\r\nBcc: attacker@example.com\r\nSubject: Spoofed';
+  ctx.addedEvents.push([
+    ['Normal Event', '2026-08-11', '2026-08-12', '', ''],
+    'Target Calendar',
+  ]);
+  ctx.sendSummary();
+  assert.ok(sent, 'an email should be sent');
+  assert.ok(!sent.subject.includes('\r'), 'subject must not contain carriage return');
+  assert.ok(!sent.subject.includes('\n'), 'subject must not contain newline');
+  assert.strictEqual(sent.subject, 'InjectedBcc: attacker@example.comSubject: Spoofed: 1 new, 0 modified, 0 deleted');
+});
+
 //---------------------------------------------------------------------------
 // fetchSourceCalendars
 //---------------------------------------------------------------------------
