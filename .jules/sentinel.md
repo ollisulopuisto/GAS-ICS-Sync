@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-04 - CRLF Header Injection in Email Summary Subject
+**Vulnerability:** In `Helpers.gs`, `sendSummary` constructed email notification subjects by interpolating `customEmailSubject` directly into the subject string (`${customEmailSubject ? customEmailSubject : "GAS-ICS-Sync Execution Summary"}: ...`) and passing it to `MailApp.sendEmail`. If a user-configured or stored setting contained carriage returns or newline characters (`\r` or `\n`), it allowed email header injection (such as injected Bcc, Cc, or Subject headers).
+**Learning:** Email headers constructed from user-configurable strings must be strictly sanitized against CRLF characters even in serverless script environments like Google Apps Script.
+**Prevention:** Sanitize user-provided email subject inputs by explicitly stripping `[\r\n]` characters before formatting email headers.
+
 ## 2026-11-03 - Organizer and Title Privacy Leak During Title Prefixing
 **Vulnerability:** When `wipeTitles` was active, `applyPrivacySettings` set `newEvent.summary = genericTitle`. However, in `createEvent`, `addOrganizerToTitle` prefixed `newEvent.summary` with the organizer name (`organizerName + ": " + newEvent.summary`), and if `addCalToTitle` was also enabled, it further modified `newEvent.summary`. Prior to this fix, if `applyPrivacySettings` only overwrote `summary` with `genericTitle`, the calendar prefix was lost, or if `applyPrivacySettings` was evaluated before organizer prefixing, sensitive organizer identities and original event titles were exposed on public/shared destination calendars despite the user enabling privacy placeholders (`wipeTitles`).
 **Learning:** Post-processing privacy transforms must ensure that all sensitive field mutations (such as organizer title prepending) cannot re-expose or override redaction guarantees.

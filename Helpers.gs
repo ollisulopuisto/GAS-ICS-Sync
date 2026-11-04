@@ -1415,10 +1415,11 @@ function parseNotificationTime(notificationString){
 * Sends an email summary with added/modified/deleted events.
 */
 function sendSummary() {
-  var subject;
   var body;
 
-  var subject = `${customEmailSubject ? customEmailSubject : "GAS-ICS-Sync Execution Summary"}: ${addedEvents.length} new, ${modifiedEvents.length} modified, ${removedEvents.length} deleted`;
+  // Security: Strip CR and LF characters to prevent CRLF / email header injection attacks
+  var cleanCustomSubject = customEmailSubject ? String(customEmailSubject).replace(/[\r\n]/g, "") : "";
+  var subject = `${cleanCustomSubject ? cleanCustomSubject : "GAS-ICS-Sync Execution Summary"}: ${addedEvents.length} new, ${modifiedEvents.length} modified, ${removedEvents.length} deleted`;
   addedEvents = condenseCalendarMap(addedEvents);
   modifiedEvents = condenseCalendarMap(modifiedEvents);
   removedEvents = condenseCalendarMap(removedEvents);
