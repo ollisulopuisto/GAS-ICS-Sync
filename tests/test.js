@@ -1113,3 +1113,65 @@ test('createEvent: creates event when MD5 digest is not in calendarEventsMD5s', 
   assert.strictEqual(result.summary, 'varattu'); // default wipeTitles is true
   assert.strictEqual(result.extendedProperties.private.id, 'new-uid-2');
 });
+
+//---------------------------------------------------------------------------
+// filterResults: date and criteria filters with hoisted invariants
+//---------------------------------------------------------------------------
+test('filterResults: correctly filters events with date filters (dtend / dtstart)', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts();
+  vm.runInContext(icalCode, ctx);
+
+  // Event 1: past event (10 days ago)
+  // Event 2: future event (10 days ahead)
+  const pastDate = new Date(Date.now() - 10 * 86400000);
+  const futureDate = new Date(Date.now() + 10 * 86400000);
+  const pastIcalTime = ctx.ICAL.Time.fromJSDate(pastDate, true);
+  const futureIcalTime = ctx.ICAL.Time.fromJSDate(futureDate, true);
+
+  const comp1 = new ctx.ICAL.Component('vevent');
+  comp1.addPropertyWithValue('uid', 'past-1');
+  comp1.addPropertyWithValue('dtstart', pastIcalTime.toString());
+  comp1.addPropertyWithValue('dtend', pastIcalTime.adjust(0, 1, 0, 0).toString());
+
+  const comp2 = new ctx.ICAL.Component('vevent');
+  comp2.addPropertyWithValue('uid', 'future-1');
+  comp2.addPropertyWithValue('dtstart', futureIcalTime.toString());
+  comp2.addPropertyWithValue('dtend', futureIcalTime.adjust(0, 1, 0, 0).toString());
+
+  // Only include events ending after 5 days ago (should include comp2, exclude comp1)
+  ctx.filters = [
+    { parameter: 'dtend', type: 'include', comparison: '>', offset: -5 }
+  ];
+
+  const filtered = ctx.filterResults([comp1, comp2]);
+  assert.strictEqual(filtered.length, 1);
+  assert.strictEqual(filtered[0].getFirstPropertyValue('uid'), 'future-1');
+});
+
+test('filterResults: correctly filters events with criteria / regexp filters', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts();
+  vm.runInContext(icalCode, ctx);
+
+  const comp1 = new ctx.ICAL.Component('vevent');
+  comp1.addPropertyWithValue('uid', 'e1');
+  comp1.addPropertyWithValue('summary', 'Cancelled: Team Meeting');
+
+  const comp2 = new ctx.ICAL.Component('vevent');
+  comp2.addPropertyWithValue('uid', 'e2');
+  comp2.addPropertyWithValue('summary', 'Important: Planning Session');
+
+  // Exclude events starting with "Cancelled:"
+  ctx.filters = [
+    { parameter: 'summary', type: 'exclude', comparison: 'begins with', criterias: ['Cancelled:'] }
+  ];
+
+  const filtered = ctx.filterResults([comp1, comp2]);
+  assert.strictEqual(filtered.length, 1);
+  assert.strictEqual(filtered[0].getFirstPropertyValue('uid'), 'e2');
+});
