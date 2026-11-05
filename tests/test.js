@@ -329,9 +329,32 @@ test('checkForUpdate: emails about a newer release of this fork, once', () => {
   assert.strictEqual(sent.length, 1);
   assert.ok(fetched[0].includes(ctx.updateRepo), 'checks this fork, not upstream');
   assert.ok(sent[0].subject.includes('99.01.01.1'));
+  assert.strictEqual(ctx._userProps.getProperty('alertedForNewVersion'), 'v99.01.01.1',
+    'stores alert state in user properties, not script properties');
+  assert.strictEqual(ctx._scriptProps.getProperty('alertedForNewVersion'), null,
+    'script properties must not be touched');
 
   ctx.checkForUpdate();
   assert.strictEqual(sent.length, 1, 'the same version is only ever announced once');
+});
+
+test('checkForUpdate: strips CRLF characters from release tag to prevent header injection', () => {
+  const sent = [];
+  const ctx = loadScripts({
+    MailApp: { sendEmail: (to, subject, body) => sent.push({ to, subject, body }) },
+    UrlFetchApp: {
+      fetch: () => ({
+        toString: () => JSON.stringify([{ tag_name: 'v99.01.01.1\r\n' }]),
+      }),
+    },
+  });
+  ctx.email = 'me@example.com';
+
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 1);
+  assert.ok(!sent[0].subject.includes('\r'), 'subject must not contain carriage return');
+  assert.ok(!sent[0].subject.includes('\n'), 'subject must not contain newline');
+  assert.ok(sent[0].subject.includes('Version v99.01.01.1 of GAS-ICS-Sync is available!'));
 });
 
 test('checkForUpdate: stays quiet when the release is not newer', () => {
