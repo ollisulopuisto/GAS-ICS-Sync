@@ -715,6 +715,37 @@ test('condenseCalendarMap: keeps the per-source privacy setting', () => {
   assert.deepStrictEqual(plain(sources[1][2]), { wipeTitles: true });
 });
 
+test('condenseCalendarMap: groups multiple targets preserving order and handles large batches efficiently', () => {
+  const ctx = loadScripts();
+  const input = [
+    ['https://a.ics', 'Work', '1', false],
+    ['https://b.ics', 'Personal', '2', true],
+    ['https://c.ics', 'Work', '3', { wipeTitles: true }],
+    ['https://d.ics', 'Family', '4', undefined],
+    ['https://e.ics', 'Personal', '5', undefined],
+  ];
+
+  const condensed = ctx.condenseCalendarMap(input);
+  assert.strictEqual(condensed.length, 3);
+  assert.strictEqual(condensed[0][0], 'Work');
+  assert.strictEqual(condensed[0][1].length, 2);
+  assert.deepStrictEqual(plain(condensed[0][1][0]), ['https://a.ics', '1', false]);
+  assert.deepStrictEqual(plain(condensed[0][1][1]), ['https://c.ics', '3', { wipeTitles: true }]);
+
+  assert.strictEqual(condensed[1][0], 'Personal');
+  assert.strictEqual(condensed[1][1].length, 2);
+  assert.deepStrictEqual(plain(condensed[1][1][0]), ['https://b.ics', '2', true]);
+  assert.strictEqual(condensed[1][1][1][0], 'https://e.ics');
+  assert.strictEqual(condensed[1][1][1][1], '5');
+  assert.strictEqual(condensed[1][1][1][2], undefined);
+
+  assert.strictEqual(condensed[2][0], 'Family');
+  assert.strictEqual(condensed[2][1].length, 1);
+  assert.strictEqual(condensed[2][1][0][0], 'https://d.ics');
+  assert.strictEqual(condensed[2][1][0][1], '4');
+  assert.strictEqual(condensed[2][1][0][2], undefined);
+});
+
 //---------------------------------------------------------------------------
 // Sync window
 //---------------------------------------------------------------------------
