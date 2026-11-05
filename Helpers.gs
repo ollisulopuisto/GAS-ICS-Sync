@@ -1564,16 +1564,20 @@ function checkForUpdate(){
   if (email == "")
     return;
 
-  var lastAlertedVersion = PropertiesService.getScriptProperties().getProperty("alertedForNewVersion");
+  // Security: Scope update alert state to user properties rather than script properties
+  // so each user account tracks its own notification status independently.
+  var lastAlertedVersion = PropertiesService.getUserProperties().getProperty("alertedForNewVersion");
   try {
     var latestVersion = getLatestVersion();
 
     if (isNewerVersion(latestVersion, scriptVersion) && latestVersion != lastAlertedVersion){
+      // Security: Strip CRLF from external release tag to prevent email header injection
+      var cleanVersion = String(latestVersion).replace(/[\r\n]/g, "");
       MailApp.sendEmail(email,
-        `Version ${latestVersion} of GAS-ICS-Sync is available! (You have ${scriptVersion})`,
+        `Version ${cleanVersion} of GAS-ICS-Sync is available! (You have ${scriptVersion})`,
         `You can see the latest release here: https://github.com/${updateRepo}/releases`);
 
-      PropertiesService.getScriptProperties().setProperty("alertedForNewVersion", latestVersion);
+      PropertiesService.getUserProperties().setProperty("alertedForNewVersion", latestVersion);
     }
   }
   catch (e){
