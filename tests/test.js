@@ -1184,6 +1184,63 @@ test('createEvent: creates event when MD5 digest is not in calendarEventsMD5s', 
   assert.strictEqual(result.extendedProperties.private.id, 'new-uid-2');
 });
 
+test('createEvent: defers ICAL.Event instantiation and skips unchanged events without wrapping', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts();
+  vm.runInContext(icalCode, ctx);
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:perf-unchanged-uid',
+    'SUMMARY:Recurring Check',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(ics);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  // Compute digest identical to event.toString()
+  vevent.removeProperty('dtstamp');
+  const digest = ctx.Utilities.computeDigest(
+    ctx.Utilities.DigestAlgorithm.MD5,
+    vevent.toString(),
+    ctx.Utilities.Charset.UTF_8
+  ).toString();
+
+  ctx.calendarEventsMD5s = [digest];
+
+  // Instrument ICAL.Event constructor to monitor if it is invoked
+  let icalEventConstructed = 0;
+  const OriginalEvent = ctx.ICAL.Event;
+  ctx.ICAL.Event = function(c) {
+    icalEventConstructed++;
+    return new OriginalEvent(c);
+  };
+
+  const result = ctx.createEvent(vevent, 'UTC');
+  assert.strictEqual(result, undefined, 'should return undefined for unchanged event');
+  assert.strictEqual(icalEventConstructed, 0, 'ICAL.Event must not be instantiated for unchanged events');
+
+  // Verify that for a modified event, ICAL.Event IS instantiated
+  ctx.calendarEventsMD5s = ['different_digest'];
+  ctx.calendarEventsMD5Set = null; // force reload of set
+  ctx.Calendar = {
+    newEvent: () => ({}),
+  };
+
+  const changedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(changedResult, 'should create event object when digest does not match');
+  assert.strictEqual(icalEventConstructed, 1, 'ICAL.Event should be instantiated for changed/new events');
+});
+
 //---------------------------------------------------------------------------
 // filterResults: date and criteria filters with hoisted invariants
 //---------------------------------------------------------------------------
