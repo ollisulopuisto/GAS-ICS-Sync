@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-05 - CRLF Header Injection in Recipient Email Address
+**Vulnerability:** In `Helpers.gs`, recipient email addresses (`email`) configured by users or stored via the settings UI were passed directly to `MailApp.sendEmail` in both `sendSummary` and `checkForUpdate` without sanitizing carriage return (`\r`) or newline (`\n`) characters. If `email` contained CRLF sequences (e.g. `user@example.com\r\nBcc: attacker@example.com`), it permitted email header injection, potentially exfiltrating sensitive calendar execution summaries (containing meeting names, descriptions, locations, and attendee schedules) to unauthorized parties.
+**Learning:** Sanitizing subject headers alone is insufficient for email security; recipient addresses (`to`) are also email headers in SMTP/mail services and must be strictly sanitized against CRLF injection and checked for non-empty content after sanitization.
+**Prevention:** Always strip `[\r\n]` characters and trim whitespace from recipient email addresses before dispatching messages via `MailApp.sendEmail`.
+
 ## 2026-11-04 - CRLF Header Injection in Email Summary Subject
 **Vulnerability:** In `Helpers.gs`, `sendSummary` constructed email notification subjects by interpolating `customEmailSubject` directly into the subject string (`${customEmailSubject ? customEmailSubject : "GAS-ICS-Sync Execution Summary"}: ...`) and passing it to `MailApp.sendEmail`. If a user-configured or stored setting contained carriage returns or newline characters (`\r` or `\n`), it allowed email header injection (such as injected Bcc, Cc, or Subject headers).
 **Learning:** Email headers constructed from user-configurable strings must be strictly sanitized against CRLF characters even in serverless script environments like Google Apps Script.
