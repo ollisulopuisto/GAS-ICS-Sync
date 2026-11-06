@@ -106,6 +106,27 @@ test('sendSummary: customEmailSubject strips CRLF characters to prevent header i
   assert.strictEqual(sent.subject, 'InjectedBcc: attacker@example.comSubject: Spoofed: 1 new, 0 modified, 0 deleted');
 });
 
+test('sendSummary: recipient email strips CRLF characters to prevent header injection', () => {
+  let sent = null;
+  const ctx = loadScripts({ MailApp: { sendEmail: (msg) => { sent = msg; } } });
+  ctx.email = 'me@example.com\r\nBcc: attacker@example.com';
+  ctx.addedEvents.push([
+    ['Normal Event', '2026-08-11', '2026-08-12', '', ''],
+    'Target Calendar',
+  ]);
+  ctx.sendSummary();
+  assert.ok(sent, 'an email should be sent');
+  assert.ok(!sent.to.includes('\r'), 'to must not contain carriage return');
+  assert.ok(!sent.to.includes('\n'), 'to must not contain newline');
+  assert.strictEqual(sent.to, 'me@example.comBcc: attacker@example.com');
+
+  // Verify that an email containing only CRLF whitespace sends no email
+  sent = null;
+  ctx.email = '\r\n   \n';
+  ctx.sendSummary();
+  assert.strictEqual(sent, null, 'no email should be sent when recipient email is empty after sanitization');
+});
+
 //---------------------------------------------------------------------------
 // fetchSourceCalendars
 //---------------------------------------------------------------------------
@@ -355,6 +376,31 @@ test('checkForUpdate: strips CRLF characters from release tag to prevent header 
   assert.ok(!sent[0].subject.includes('\r'), 'subject must not contain carriage return');
   assert.ok(!sent[0].subject.includes('\n'), 'subject must not contain newline');
   assert.ok(sent[0].subject.includes('Version v99.01.01.1 of GAS-ICS-Sync is available!'));
+});
+
+test('checkForUpdate: strips CRLF characters from recipient email to prevent header injection', () => {
+  const sent = [];
+  const ctx = loadScripts({
+    MailApp: { sendEmail: (to, subject, body) => sent.push({ to, subject, body }) },
+    UrlFetchApp: {
+      fetch: () => ({
+        toString: () => JSON.stringify([{ tag_name: 'v99.01.01.1' }]),
+      }),
+    },
+  });
+  ctx.email = 'me@example.com\r\nCc: attacker@example.com';
+
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 1);
+  assert.ok(!sent[0].to.includes('\r'), 'to must not contain carriage return');
+  assert.ok(!sent[0].to.includes('\n'), 'to must not contain newline');
+  assert.strictEqual(sent[0].to, 'me@example.comCc: attacker@example.com');
+
+  // Verify that an email containing only CRLF whitespace aborts update notification
+  sent.length = 0;
+  ctx.email = '\r\n   ';
+  ctx.checkForUpdate();
+  assert.strictEqual(sent.length, 0);
 });
 
 test('checkForUpdate: stays quiet when the release is not newer', () => {

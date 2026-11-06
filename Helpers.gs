@@ -1489,8 +1489,13 @@ function sendSummary() {
   }
 
   body += "<br/><br/>Do you have any problems or suggestions? Contact us at <a href='https://github.com/derekantrican/GAS-ICS-Sync/'>github</a>.";
+  // Security: Strip CRLF from recipient email to prevent email header injection
+  var cleanEmail = email ? String(email).replace(/[\r\n]/g, "").trim() : "";
+  if (!cleanEmail)
+    return;
+
   var message = {
-    to: email,
+    to: cleanEmail,
     subject: subject,
     htmlBody: body,
     name: "GAS-ICS-Sync"
@@ -1560,8 +1565,10 @@ function callWithBackoff(func, maxRetries) {
  * Will notify the user once if a new version was released.
  */
 function checkForUpdate(){
+  // Security: Strip CRLF from recipient email to prevent email header injection
+  var cleanEmail = email ? String(email).replace(/[\r\n]/g, "").trim() : "";
   // No need to check if we can't alert anyway
-  if (email == "")
+  if (cleanEmail == "")
     return;
 
   // Security: Scope update alert state to user properties rather than script properties
@@ -1573,7 +1580,7 @@ function checkForUpdate(){
     if (isNewerVersion(latestVersion, scriptVersion) && latestVersion != lastAlertedVersion){
       // Security: Strip CRLF from external release tag to prevent email header injection
       var cleanVersion = String(latestVersion).replace(/[\r\n]/g, "");
-      MailApp.sendEmail(email,
+      MailApp.sendEmail(cleanEmail,
         `Version ${cleanVersion} of GAS-ICS-Sync is available! (You have ${scriptVersion})`,
         `You can see the latest release here: https://github.com/${updateRepo}/releases`);
 
