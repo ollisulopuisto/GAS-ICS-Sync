@@ -1348,3 +1348,51 @@ test('filterResults: correctly filters events with criteria / regexp filters', (
   assert.strictEqual(filtered.length, 1);
   assert.strictEqual(filtered[0].getFirstPropertyValue('uid'), 'e2');
 });
+
+test('filterResults: reuses parsed ICAL.Time directly and supports fallback string property values', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts();
+  vm.runInContext(icalCode, ctx);
+
+  const pastDate = new Date(Date.now() - 10 * 86400000);
+  const futureDate = new Date(Date.now() + 10 * 86400000);
+
+  // Case 1: Real ICAL.Component parsed from jcal/ICS where dtstart is an ICAL.Time object
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:fast-past',
+    `DTSTART:${ctx.ICAL.Time.fromJSDate(pastDate, true).toICALString()}`,
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:fast-future',
+    `DTSTART:${ctx.ICAL.Time.fromJSDate(futureDate, true).toICALString()}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\n');
+  const comp = new ctx.ICAL.Component(ctx.ICAL.parse(ics));
+  const events = comp.getAllSubcomponents('vevent');
+
+  // Verify that getFirstPropertyValue returns an ICAL.Time with .compare
+  assert.strictEqual(typeof events[0].getFirstPropertyValue('dtstart').compare, 'function');
+
+  // Filter: exclude events starting after 5 days from now (should include past, exclude future)
+  ctx.filters = [
+    { parameter: 'dtstart', type: 'exclude', comparison: '>', offset: 5 }
+  ];
+
+  const filtered = ctx.filterResults(events);
+  assert.strictEqual(filtered.length, 1);
+  assert.strictEqual(filtered[0].getFirstPropertyValue('uid'), 'fast-past');
+
+  // Case 2: Component where dtstart property value is a raw string (fallback path)
+  const manualComp = new ctx.ICAL.Component('vevent');
+  manualComp.addPropertyWithValue('uid', 'raw-string-future');
+  manualComp.addPropertyWithValue('dtstart', ctx.ICAL.Time.fromJSDate(futureDate, true).toString());
+
+  const filteredFallback = ctx.filterResults([manualComp]);
+  assert.strictEqual(filteredFallback.length, 0, 'raw string future date should be excluded');
+});
