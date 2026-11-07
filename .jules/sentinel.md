@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-06 - Event Source URL Privacy Leak During Description Redaction
+**Vulnerability:** In `Helpers.gs`, when users enabled privacy redaction (`wipeDescriptions`) to sanitize event details before syncing into shared or public Google Calendars, `createEvent` extracted the event's `URL` property and set `newEvent.source.url`. `applyPrivacySettings` cleared `newEvent.description` but left `newEvent.source` untouched, leaking confidential URLs (containing private meeting links, internal document paths, or sensitive access tokens) to anyone with access to the destination calendar.
+**Learning:** Privacy redaction must inspect all Google Calendar API event properties that convey descriptive context or link to the event's subject matter (e.g. `newEvent.source`), not just `summary`, `description`, and `location`.
+**Prevention:** Ensure that `applyPrivacySettings` cleans up `newEvent.source` whenever `wipeDescriptions` is active.
+
 ## 2026-11-05 - CRLF Header Injection in Recipient Email Address
 **Vulnerability:** In `Helpers.gs`, recipient email addresses (`email`) configured by users or stored via the settings UI were passed directly to `MailApp.sendEmail` in both `sendSummary` and `checkForUpdate` without sanitizing carriage return (`\r`) or newline (`\n`) characters. If `email` contained CRLF sequences (e.g. `user@example.com\r\nBcc: attacker@example.com`), it permitted email header injection, potentially exfiltrating sensitive calendar execution summaries (containing meeting names, descriptions, locations, and attendee schedules) to unauthorized parties.
 **Learning:** Sanitizing subject headers alone is insufficient for email security; recipient addresses (`to`) are also email headers in SMTP/mail services and must be strictly sanitized against CRLF injection and checked for non-empty content after sanitization.

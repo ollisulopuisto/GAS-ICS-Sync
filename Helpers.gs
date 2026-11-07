@@ -162,8 +162,12 @@ function applyPrivacySettings(newEvent, settings, event){
     newEvent.summary = prefix + genericTitle;
   }
 
-  if (settings.wipeDescriptions)
+  if (settings.wipeDescriptions){
     newEvent.description = "";
+    // Security: Clear source URL attachment when wiping descriptions to avoid leaking
+    // sensitive links (meeting invites, private documents, tokens) to shared calendars.
+    delete newEvent.source;
+  }
 
   if (settings.wipeLocations)
     newEvent.location = "";

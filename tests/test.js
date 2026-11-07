@@ -694,6 +694,55 @@ test('createEvent: wipeTitles prevents organizer and original event title from l
   assert.ok(!result.summary.includes('Sensitive Quarterly Review'), 'Original title must not leak when wipeTitles is enabled');
 });
 
+test('createEvent: wipeDescriptions removes event source URL to prevent privacy leak', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts({
+    Calendar: {
+      newEvent: () => ({}),
+      newEventSource: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  const icsWithUrl = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:url-leak-test-1',
+    'SUMMARY:Project Sync',
+    'DESCRIPTION:Project notes',
+    'URL:https://company.internal/confidential-doc?token=secret123',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(icsWithUrl);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  // Case 1: wipeDescriptions is true -> source URL must be removed
+  ctx.wipeDescriptions = true;
+  const wipedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(wipedResult);
+  assert.strictEqual(wipedResult.description, '');
+  assert.strictEqual(wipedResult.source, undefined, 'source must be removed when wipeDescriptions is enabled');
+
+  // Case 2: wipeDescriptions is false -> source URL must be preserved
+  ctx.wipeDescriptions = false;
+  ctx.calendarEventsMD5Set = null; // reset digest set cache
+  const preservedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(preservedResult);
+  assert.strictEqual(preservedResult.description, 'Project notes');
+  assert.deepStrictEqual(plain(preservedResult.source), {
+    url: 'https://company.internal/confidential-doc?token=secret123',
+    title: 'link',
+  });
+});
+
 test('getPrivacySettings: falls back to the global settings', () => {
   const ctx = loadScripts();
   ctx.wipeTitles = true;
