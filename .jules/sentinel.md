@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-07 - Event Organizer Identity and Email Privacy Leak During Title Redaction
+**Vulnerability:** In `Helpers.gs`, when users enabled privacy redaction (`wipeTitles`) to replace sensitive event details with generic placeholders before syncing into shared or public Google Calendars, `createEvent` still extracted `ORGANIZER` properties (`cn` and `mailto`) and attached `newEvent.organizer`. While organizer title prefixing was suppressed, the `organizer` object itself was persisted to Google Calendar, exposing confidential organizer names and email addresses on shared or public destination calendars.
+**Learning:** Privacy placeholders must scrub both visible text representations (such as title prefixes) and structural event metadata (`newEvent.organizer`) that can expose attendee or organizer identities to unauthorized viewers of target calendars.
+**Prevention:** In `applyPrivacySettings`, delete `newEvent.organizer` whenever `wipeTitles` is active.
+
 ## 2026-11-06 - Event Source URL Privacy Leak During Description Redaction
 **Vulnerability:** In `Helpers.gs`, when users enabled privacy redaction (`wipeDescriptions`) to sanitize event details before syncing into shared or public Google Calendars, `createEvent` extracted the event's `URL` property and set `newEvent.source.url`. `applyPrivacySettings` cleared `newEvent.description` but left `newEvent.source` untouched, leaking confidential URLs (containing private meeting links, internal document paths, or sensitive access tokens) to anyone with access to the destination calendar.
 **Learning:** Privacy redaction must inspect all Google Calendar API event properties that convey descriptive context or link to the event's subject matter (e.g. `newEvent.source`), not just `summary`, `description`, and `location`.

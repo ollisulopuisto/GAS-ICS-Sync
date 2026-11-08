@@ -160,6 +160,9 @@ function applyPrivacySettings(newEvent, settings, event){
     // sensitive details like organizer name or original titles from leaking.
     var prefix = (addCalToTitle && event && event.hasProperty('parentCal')) ? "(" + event.getFirstPropertyValue('parentCal') + ") " : "";
     newEvent.summary = prefix + genericTitle;
+    // Security: Clear organizer metadata to prevent leaking confidential organizer identity
+    // and email address when privacy placeholders are active for shared destination calendars.
+    delete newEvent.organizer;
   }
 
   if (settings.wipeDescriptions){

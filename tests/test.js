@@ -674,7 +674,7 @@ test('createEvent: wipeTitles prevents organizer and original event title from l
     'BEGIN:VEVENT',
     'UID:leak-test-1',
     'SUMMARY:Sensitive Quarterly Review',
-    'ORGANIZER;CN=CEO Alice:mailto:alice@example.com',
+    'ORGANIZER;CN=CEO Alice;MAILTO=alice@example.com:mailto:alice@example.com',
     'DTSTART:20260811T100000Z',
     'DTEND:20260811T110000Z',
     'END:VEVENT',
@@ -692,6 +692,18 @@ test('createEvent: wipeTitles prevents organizer and original event title from l
   assert.strictEqual(result.summary, '(WorkCal) Confidential Placeholder');
   assert.ok(!result.summary.includes('CEO Alice'), 'Organizer name must not leak into summary when wipeTitles is enabled');
   assert.ok(!result.summary.includes('Sensitive Quarterly Review'), 'Original title must not leak when wipeTitles is enabled');
+  // Security: Event organizer property must also be stripped to avoid leaking identity and email
+  assert.strictEqual(result.organizer, undefined, 'newEvent.organizer must be deleted when wipeTitles is enabled');
+
+  // Verify that when wipeTitles is false, organizer metadata is retained
+  ctx.wipeTitles = false;
+  ctx.calendarEventsMD5Set = null;
+  const nonWipedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(nonWipedResult);
+  assert.deepStrictEqual(plain(nonWipedResult.organizer), {
+    displayName: 'CEO Alice',
+    email: 'alice@example.com',
+  });
 });
 
 test('createEvent: wipeDescriptions removes event source URL to prevent privacy leak', () => {
