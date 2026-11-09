@@ -706,6 +706,56 @@ test('createEvent: wipeTitles prevents organizer and original event title from l
   });
 });
 
+test('createEvent: wipeTitles deletes attendees list to prevent attendee privacy leak and calendar invites', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts({
+    Calendar: {
+      newEvent: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  ctx.wipeTitles = true;
+  ctx.addAttendees = true;
+
+  const icsWithAttendees = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:attendee-leak-test-1',
+    'SUMMARY:Private Strategy Session',
+    'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Bob Smith:mailto:bob@example.com',
+    'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=TENTATIVE;CN=Carol Danvers:mailto:carol@example.com',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(icsWithAttendees);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  // Case 1: wipeTitles is true -> attendees must be stripped
+  const wipedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(wipedResult);
+  assert.strictEqual(wipedResult.summary, ctx.genericTitle);
+  assert.strictEqual(wipedResult.attendees, undefined, 'newEvent.attendees must be deleted when wipeTitles is enabled');
+
+  // Case 2: wipeTitles is false -> attendees must be preserved
+  ctx.wipeTitles = false;
+  ctx.calendarEventsMD5Set = null;
+  const nonWipedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(nonWipedResult);
+  assert.strictEqual(nonWipedResult.summary, 'Private Strategy Session');
+  assert.deepStrictEqual(plain(nonWipedResult.attendees), [
+    { email: 'bob@example.com', displayName: 'Bob Smith', responseStatus: 'accepted' },
+    { email: 'carol@example.com', displayName: 'Carol Danvers', responseStatus: 'tentative' },
+  ]);
+});
+
 test('createEvent: wipeDescriptions removes event source URL to prevent privacy leak', () => {
   const fs = require('fs');
   const vm = require('vm');

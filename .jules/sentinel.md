@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-09 - Attendee Identity Leak and Unintended Calendar Invites During Title Redaction
+**Vulnerability:** In `Helpers.gs`, when users enabled privacy placeholders (`wipeTitles`) to redact sensitive event details before syncing private/work calendars into shared or public Google Calendars, `createEvent` still extracted `ATTENDEE` entries when `addAttendees` was enabled and attached `newEvent.attendees`. `applyPrivacySettings` did not strip `newEvent.attendees`, leaking sensitive participant names and email addresses on destination calendars and inadvertently adding the synced events to attendees' personal calendars.
+**Learning:** Privacy redaction models that wipe event summaries to obscure sensitive events must also sanitize attendee participation structures (`newEvent.attendees`) to prevent participant deanonymization and unwanted external event invitations.
+**Prevention:** In `applyPrivacySettings`, delete `newEvent.attendees` whenever `wipeTitles` is active.
+
 ## 2026-11-07 - Event Organizer Identity and Email Privacy Leak During Title Redaction
 **Vulnerability:** In `Helpers.gs`, when users enabled privacy redaction (`wipeTitles`) to replace sensitive event details with generic placeholders before syncing into shared or public Google Calendars, `createEvent` still extracted `ORGANIZER` properties (`cn` and `mailto`) and attached `newEvent.organizer`. While organizer title prefixing was suppressed, the `organizer` object itself was persisted to Google Calendar, exposing confidential organizer names and email addresses on shared or public destination calendars.
 **Learning:** Privacy placeholders must scrub both visible text representations (such as title prefixes) and structural event metadata (`newEvent.organizer`) that can expose attendee or organizer identities to unauthorized viewers of target calendars.
