@@ -163,6 +163,9 @@ function applyPrivacySettings(newEvent, settings, event){
     // Security: Clear organizer metadata to prevent leaking confidential organizer identity
     // and email address when privacy placeholders are active for shared destination calendars.
     delete newEvent.organizer;
+    // Security: Clear attendee list to prevent leaking participant names/emails on shared calendars
+    // and prevent unwanted calendar event additions to attendees when privacy placeholders are active.
+    delete newEvent.attendees;
   }
 
   if (settings.wipeDescriptions){
