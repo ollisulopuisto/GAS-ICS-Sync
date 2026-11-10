@@ -946,7 +946,11 @@ function createEvent(event, calendarTz){
     //newEvent.sequence = icalEvent.sequence; Currently disabled as it is causing issues with recurrence exceptions
   }
 
-  if (descriptionAsTitles && event.hasProperty('description'))
+  var privacySettings = getPrivacySettings(event);
+
+  // Security: Do not promote description to event title if wipeDescriptions is active,
+  // preventing sensitive descriptions from leaking into destination calendar summaries when wipeTitles is false.
+  if (descriptionAsTitles && event.hasProperty('description') && !privacySettings.wipeDescriptions)
     newEvent.summary = icalEvent.description;
   else if (event.hasProperty('summary'))
     newEvent.summary = icalEvent.summary;
@@ -978,7 +982,7 @@ function createEvent(event, calendarTz){
   if (event.hasProperty('location'))
     newEvent.location = icalEvent.location;
 
-  applyPrivacySettings(newEvent, getPrivacySettings(event), event);
+  applyPrivacySettings(newEvent, privacySettings, event);
 
   var validVisibilityValues = ["default", "public", "private", "confidential"];
   if ( validVisibilityValues.includes(overrideVisibility.toLowerCase()) ) {

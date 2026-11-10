@@ -1,5 +1,10 @@
 # Sentinel's Journal
 
+## 2026-11-10 - Sensitive Event Description Leak into Title During Description Redaction
+**Vulnerability:** In `Helpers.gs`, when users enabled privacy redaction to blank out event descriptions (`wipeDescriptions`), but preserved original event titles (`wipeTitles = false`), `createEvent` still assigned the feed's description to `newEvent.summary` if `descriptionAsTitles` was enabled. `applyPrivacySettings` cleared `newEvent.description` and removed `newEvent.source`, but left `newEvent.summary` holding the confidential description, exposing sensitive descriptions (containing private meeting notes, passwords, and access credentials) in plaintext event summaries on shared target calendars.
+**Learning:** When feature flags allow cross-property assignment or field promotion (e.g. promoting `description` into `summary`), privacy redactions on the source property must prevent the sensitive value from being copied into non-redacted target fields and must safely fall back to the destination field's original value.
+**Prevention:** In `createEvent`, ensure that `descriptionAsTitles` is only applied when `wipeDescriptions` is inactive, falling back to `icalEvent.summary` when descriptions are being wiped.
+
 ## 2026-11-09 - Attendee Identity Leak and Unintended Calendar Invites During Title Redaction
 **Vulnerability:** In `Helpers.gs`, when users enabled privacy placeholders (`wipeTitles`) to redact sensitive event details before syncing private/work calendars into shared or public Google Calendars, `createEvent` still extracted `ATTENDEE` entries when `addAttendees` was enabled and attached `newEvent.attendees`. `applyPrivacySettings` did not strip `newEvent.attendees`, leaking sensitive participant names and email addresses on destination calendars and inadvertently adding the synced events to attendees' personal calendars.
 **Learning:** Privacy redaction models that wipe event summaries to obscure sensitive events must also sanitize attendee participation structures (`newEvent.attendees`) to prevent participant deanonymization and unwanted external event invitations.
