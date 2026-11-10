@@ -805,6 +805,75 @@ test('createEvent: wipeDescriptions removes event source URL to prevent privacy 
   });
 });
 
+test('createEvent: wipeDescriptions prevents sensitive descriptions from leaking into title when descriptionAsTitles is enabled', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+  const ctx = loadScripts({
+    Calendar: {
+      newEvent: () => ({}),
+    },
+  });
+  vm.runInContext(icalCode, ctx);
+
+  const icsWithConfidentialDesc = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VEVENT',
+    'UID:desc-leak-test-1',
+    'SUMMARY:Weekly Standup',
+    'DESCRIPTION:Confidential Strategy Notes and Passwords',
+    'DTSTART:20260811T100000Z',
+    'DTEND:20260811T110000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const jcal = ctx.ICAL.parse(icsWithConfidentialDesc);
+  const comp = new ctx.ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent('vevent');
+
+  // Case 1: wipeDescriptions is true, wipeTitles is false, descriptionAsTitles is true
+  // Sensitive description must NOT be used as summary; it should fall back to original summary
+  ctx.wipeTitles = false;
+  ctx.wipeDescriptions = true;
+  ctx.descriptionAsTitles = true;
+  ctx.calendarEventsMD5Set = null;
+
+  const wipedResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(wipedResult);
+  assert.strictEqual(wipedResult.summary, 'Weekly Standup', 'Summary must retain original summary, not confidential description');
+  assert.strictEqual(wipedResult.description, '', 'Description must be wiped clean');
+  assert.ok(!wipedResult.summary.includes('Confidential Strategy Notes'), 'Description must not leak into summary');
+
+  // Case 2: Per-source privacy override { wipeDescriptions: true, wipeTitles: false }
+  ctx.wipeTitles = false;
+  ctx.wipeDescriptions = false; // global is false
+  ctx.descriptionAsTitles = true;
+  ctx.calendarEventsMD5Set = null;
+
+  vevent.removeAllProperties('privacy');
+  vevent.addPropertyWithValue('privacy', JSON.stringify({ wipeDescriptions: true, wipeTitles: false }));
+
+  const perSourceResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(perSourceResult);
+  assert.strictEqual(perSourceResult.summary, 'Weekly Standup', 'Per-source wipeDescriptions must prevent description leakage into summary');
+  assert.strictEqual(perSourceResult.description, '', 'Per-source wipeDescriptions must clear description');
+
+  // Case 3: wipeDescriptions is false, descriptionAsTitles is true
+  // Normal descriptionAsTitles behavior is preserved when descriptions are not redacted
+  vevent.removeAllProperties('privacy');
+  ctx.wipeDescriptions = false;
+  ctx.wipeTitles = false;
+  ctx.descriptionAsTitles = true;
+  ctx.calendarEventsMD5Set = null;
+
+  const normalResult = ctx.createEvent(vevent, 'UTC');
+  assert.ok(normalResult);
+  assert.strictEqual(normalResult.summary, 'Confidential Strategy Notes and Passwords', 'Normal descriptionAsTitles should work when wipeDescriptions is false');
+  assert.strictEqual(normalResult.description, 'Confidential Strategy Notes and Passwords');
+});
+
 test('getPrivacySettings: falls back to the global settings', () => {
   const ctx = loadScripts();
   ctx.wipeTitles = true;
