@@ -130,7 +130,7 @@ function getPrivacySettings(event){
     wipeLocations : wipeLocations
   };
 
-  if (event.hasProperty('privacy')){
+  if (event && typeof event.hasProperty === "function" && event.hasProperty('privacy')){
     try{
       var perSource = JSON.parse(event.getFirstPropertyValue('privacy').toString());
       for (var key of Object.keys(settings)){
@@ -1198,9 +1198,21 @@ function processTasks(responses, fetchFailed){
   var vtasks = [];
   for (var resp of responses){
     var jcalData = ICAL.parse(resp[0]);
+    var privacy = resp[2];
     var component = new ICAL.Component(jcalData);
+    var subtasks = component.getAllSubcomponents("vtodo");
 
-    vtasks = [].concat(component.getAllSubcomponents("vtodo"), vtasks);
+    // Security: Strip untrusted feed-injected privacy properties, then apply script-managed per-source privacy
+    subtasks.forEach(function(task){
+      if (typeof task.removeAllProperties === "function"){
+        task.removeAllProperties("privacy");
+      }
+      if (privacy != undefined && typeof task.addPropertyWithValue === "function"){
+        task.addPropertyWithValue("privacy", JSON.stringify(normalizePrivacySetting(privacy)));
+      }
+    });
+
+    vtasks = [].concat(subtasks, vtasks);
   }
 
   var icsTasksIds = vtasks.map(function(task){ return task.getFirstPropertyValue('uid').toString(); });
@@ -1212,7 +1224,9 @@ function processTasks(responses, fetchFailed){
       continue; //Task was already created by a previous sync
 
     var newtask = Tasks.newTask();
-    newtask.title = task.getFirstPropertyValue("summary").toString();
+    // Security: Redact task summary with genericTitle if privacy wipeTitles is enabled (per-source or global)
+    var taskPrivacy = getPrivacySettings(task);
+    newtask.title = taskPrivacy.wipeTitles ? genericTitle : task.getFirstPropertyValue("summary").toString();
     var due = task.getFirstPropertyValue("due");
     if (due != null){
       var dueDate = due.toJSDate();

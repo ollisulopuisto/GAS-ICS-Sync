@@ -295,10 +295,58 @@ const ICS_WITH_TODO = 'BEGIN:VCALENDAR\nBEGIN:VTODO\nUID:todo-uid-1\nSUMMARY:Buy
 test('processTasks: parses the ICS text (not the [content, color] tuple)', () => {
   const { tasksStub, icalStub, inserted } = makeTasksEnv();
   const ctx = loadScripts({ Tasks: tasksStub, ICAL: icalStub });
+  ctx.wipeTitles = false;
   ctx.removeEventsFromCalendar = false;
   ctx.processTasks([[ICS_WITH_TODO, undefined]]);
   assert.strictEqual(inserted.length, 1);
   assert.strictEqual(inserted[0].title, 'Buy milk');
+});
+
+test('processTasks: redacts task summary when wipeTitles is enabled (global and per-source)', () => {
+  const fs = require('fs');
+  const vm = require('vm');
+  const icalCode = fs.readFileSync('ical.js.gs', 'utf8');
+
+  // Case 1: Global wipeTitles is enabled (default in Code.gs is true)
+  const env1 = makeTasksEnv();
+  const ctx1 = loadScripts({ Tasks: env1.tasksStub });
+  vm.runInContext(icalCode, ctx1);
+  ctx1.wipeTitles = true;
+  ctx1.genericTitle = 'Task Placeholder';
+  ctx1.processTasks([[ICS_WITH_TODO, undefined]], false);
+  assert.strictEqual(env1.inserted.length, 1);
+  assert.strictEqual(env1.inserted[0].title, 'Task Placeholder', 'global wipeTitles should redact task summary');
+
+  // Case 2: Per-source override: global wipeTitles is false, but source privacy override wipes titles
+  const env2 = makeTasksEnv();
+  const ctx2 = loadScripts({ Tasks: env2.tasksStub });
+  vm.runInContext(icalCode, ctx2);
+  ctx2.wipeTitles = false;
+  ctx2.genericTitle = 'Per-Source Placeholder';
+  ctx2.processTasks([[ICS_WITH_TODO, undefined, { wipeTitles: true }]], false);
+  assert.strictEqual(env2.inserted.length, 1);
+  assert.strictEqual(env2.inserted[0].title, 'Per-Source Placeholder', 'per-source wipeTitles override should redact task summary');
+
+  // Case 3: Feed attempts untrusted property injection with PRIVACY:{"wipeTitles":false}
+  const icsWithMaliciousPrivacy = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'BEGIN:VTODO',
+    'UID:malicious-todo-1',
+    'SUMMARY:Secret Strategic Task',
+    'PRIVACY:{"wipeTitles":false}',
+    'END:VTODO',
+    'END:VCALENDAR',
+  ].join('\n');
+
+  const env3 = makeTasksEnv();
+  const ctx3 = loadScripts({ Tasks: env3.tasksStub });
+  vm.runInContext(icalCode, ctx3);
+  ctx3.wipeTitles = true;
+  ctx3.genericTitle = 'Sanitized Task';
+  ctx3.processTasks([[icsWithMaliciousPrivacy, undefined, undefined]], false);
+  assert.strictEqual(env3.inserted.length, 1);
+  assert.strictEqual(env3.inserted[0].title, 'Sanitized Task', 'feed cannot bypass wipeTitles by injecting PRIVACY property');
 });
 
 test('processTasks: never deletes tasks the script did not create', () => {
