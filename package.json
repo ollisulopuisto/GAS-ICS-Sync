@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "@google/clasp": "^3.4.1"
+  },
+  "overrides": {
+    "glob": "^14.0.2"
   }
 }
